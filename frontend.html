@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZestRewards - Create Transaction</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 14px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        input::placeholder {
+            color: #999;
+        }
+
+        .input-hint {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            border-left: 4px solid #c33;
+            display: none;
+        }
+
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            border-left: 4px solid #3c3;
+            display: none;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border: 2px solid #e0e0e0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: #f5f7ff;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #555;
+            margin-top: 20px;
+        }
+
+        .info-box strong {
+            color: #667eea;
+        }
+
+        .points-display {
+            background: #f0f0f0;
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: 600;
+            color: #667eea;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">🎊</div>
+            <h1>ZestRewards</h1>
+            <p class="subtitle">Create New Transaction</p>
+        </div>
+
+        <div class="error" id="errorMsg"></div>
+        <div class="success" id="successMsg"></div>
+
+        <form id="transactionForm">
+            <div class="form-group">
+                <label for="phone">Phone Number *</label>
+                <input 
+                    type="tel" 
+                    id="phone" 
+                    name="phone" 
+                    placeholder="918921892930"
+                    required
+                >
+                <div class="input-hint">Enter phone with country code (e.g., 918921892930)</div>
+            </div>
+
+            <div class="form-group">
+                <label for="name">Customer Name (Optional)</label>
+                <input 
+                    type="text" 
+                    id="name" 
+                    name="name" 
+                    placeholder="e.g., Rahul Kumar"
+                >
+                <div class="input-hint">Customer's full name</div>
+            </div>
+
+            <div class="form-group">
+                <label for="bill">Bill Amount (₹) *</label>
+                <input 
+                    type="number" 
+                    id="bill" 
+                    name="bill" 
+                    placeholder="500"
+                    min="1"
+                    step="0.01"
+                    required
+                >
+                <div class="input-hint">Enter amount in rupees</div>
+                <div class="points-display" id="pointsDisplay"></div>
+            </div>
+
+            <button type="submit">Create Transaction</button>
+            <div class="loading" id="loading">
+                <span class="spinner"></span>Processing...
+            </div>
+        </form>
+
+        <div class="info-box">
+            <strong>Info:</strong><br>
+            Customer will receive WhatsApp notification with points added to their account.
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('transactionForm');
+        const nameInput = document.getElementById('name');
+        const phoneInput = document.getElementById('phone');
+        const billInput = document.getElementById('bill');
+        const errorMsg = document.getElementById('errorMsg');
+        const successMsg = document.getElementById('successMsg');
+        const loading = document.getElementById('loading');
+        const pointsDisplay = document.getElementById('pointsDisplay');
+
+        const RESTAURANT_ID = "rest_001";
+        const POINTS_RATE = 10;
+        const BACKEND_URL = "http://localhost:8000";
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.style.display = 'block';
+            successMsg.style.display = 'none';
+        }
+
+        function showSuccess(msg) {
+            successMsg.textContent = msg;
+            successMsg.style.display = 'block';
+            errorMsg.style.display = 'none';
+        }
+
+        function hideMessages() {
+            errorMsg.style.display = 'none';
+            successMsg.style.display = 'none';
+        }
+
+        function formatPhoneNumber(phone) {
+            // Remove all non-digits
+            const digits = phone.replace(/\D/g, '');
+            
+            // Should be 10 digits (mobile) or 12 digits (with country code)
+            if (digits.length === 10) {
+                return '91' + digits;  // No + sign
+            } else if (digits.length === 12 && digits.startsWith('91')) {
+                return digits;  // Already has 91, no + sign
+            } else if (digits.length > 10) {
+                return digits;  // Return as is, no + sign
+            }
+            return null;
+        }
+
+        billInput.addEventListener('input', (e) => {
+            const bill = parseFloat(e.target.value);
+            if (bill && bill > 0) {
+                const points = Math.floor(bill / POINTS_RATE);
+                pointsDisplay.textContent = 'Points Earned: ' + points + ' points';
+                pointsDisplay.style.display = 'block';
+            } else {
+                pointsDisplay.style.display = 'none';
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessages();
+
+            const name = nameInput.value.trim();
+            const phone = phoneInput.value.trim();
+            const bill = parseFloat(billInput.value);
+
+            const formattedPhone = formatPhoneNumber(phone);
+            if (!formattedPhone) {
+                showError('Please enter a valid phone number');
+                return;
+            }
+
+            if (bill < 1) {
+                showError('Bill amount must be at least 1 rupee');
+                return;
+            }
+
+            loading.style.display = 'block';
+            const submitBtn = form.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+
+            try {
+                const pointsEarned = Math.floor(bill / POINTS_RATE);
+                const transactionId = 'txn_' + formattedPhone + '_' + Math.floor(Date.now() / 1000);
+
+                const transactionData = {
+                    transaction_id: transactionId,
+                    customer_phone: formattedPhone,  // No + sign
+                    customer_name: name || "",  // ← CHANGED: Send customer_name instead of cashier_name
+                    restaurant_id: RESTAURANT_ID,
+                    bill_amount: bill,
+                    points_earned: pointsEarned,
+                    added_by: "frontend",
+                    notes: ""
+                };
+
+                console.log('Sending to backend:', transactionData);
+
+                const response = await fetch(BACKEND_URL + '/create-transaction', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(transactionData)
+                });
+
+                const data = await response.json();
+                console.log('Backend response:', data);
+
+                if (response.ok) {
+                    const customerName = name || formattedPhone;
+                    showSuccess(`Transaction created! ${pointsEarned} points added for ${customerName}`);
+                    form.reset();
+                    pointsDisplay.style.display = 'none';
+                } else {
+                    showError(data.error || 'Failed to create transaction');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Network error. Make sure backend is running on ' + BACKEND_URL);
+            } finally {
+                loading.style.display = 'none';
+                submitBtn.disabled = false;
+            }
+        });
+
+        // Auto-format phone number as user types (no + sign)
+        phoneInput.addEventListener('input', (e) => {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 12) {
+                value = value.slice(0, 12);
+            }
+            e.target.value = value;
+        });
+    </script>
+</body>
+</html>
