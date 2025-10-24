@@ -3,8 +3,8 @@ from flask_cors import CORS
 import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
-from firebase_admin import firestore as admin_firestore  # ← For Increment
-from datetime import datetime, timedelta  # ← Added timedelta for campaigns
+from firebase_admin import firestore as admin_firestore
+from datetime import datetime, timedelta
 import os
 import base64
 import json
@@ -103,7 +103,7 @@ def get_customers_by_segment(segment, restaurant_id=None):
     Get customers based on segment type
     
     Segments:
-    - all: All opted-in customers
+    - all: All customers
     - vip: Customers with 500+ points
     - inactive: Haven't visited in 30+ days
     - active: Visited in last 30 days
@@ -116,44 +116,34 @@ def get_customers_by_segment(segment, restaurant_id=None):
     
     try:
         if segment == 'vip':
-            # VIP customers with 500+ points
             customers_ref = db.collection('customers')\
                 .where('restaurant_id', '==', rest_id)\
                 .where('points_balance', '>=', 500)\
-                .where('opted_in', '==', True)\
                 .stream()
                 
         elif segment == 'inactive':
-            # Inactive customers (30+ days since last visit)
             thirty_days_ago = datetime.now() - timedelta(days=30)
             customers_ref = db.collection('customers')\
                 .where('restaurant_id', '==', rest_id)\
                 .where('last_visit', '<', thirty_days_ago)\
-                .where('opted_in', '==', True)\
                 .stream()
                 
         elif segment == 'active':
-            # Active customers (visited in last 30 days)
             thirty_days_ago = datetime.now() - timedelta(days=30)
             customers_ref = db.collection('customers')\
                 .where('restaurant_id', '==', rest_id)\
                 .where('last_visit', '>=', thirty_days_ago)\
-                .where('opted_in', '==', True)\
                 .stream()
                 
         elif segment == 'high_points':
-            # Customers with 200+ points
             customers_ref = db.collection('customers')\
                 .where('restaurant_id', '==', rest_id)\
                 .where('points_balance', '>=', 200)\
-                .where('opted_in', '==', True)\
                 .stream()
                 
         else:  # 'all' or default
-            # All opted-in customers
             customers_ref = db.collection('customers')\
                 .where('restaurant_id', '==', rest_id)\
-                .where('opted_in', '==', True)\
                 .stream()
         
         # Convert to list
@@ -175,7 +165,6 @@ def personalize_message(message, customer_data):
     personalized = personalized.replace('{name}', customer_data.get('customer_name', 'Valued Customer'))
     personalized = personalized.replace('{points}', str(customer_data.get('points_balance', 0)))
     personalized = personalized.replace('{visits}', str(customer_data.get('total_visits', 0)))
-    personalized = personalized.replace('{restaurant}', customer_data.get('restaurant_name', 'Restaurant'))
     
     return personalized
 
@@ -199,19 +188,6 @@ def get_customer(phone_number, restaurant_id):
     
     print(f"❌ Customer not found: {customer_id}")
     return None
-
-def update_optin_status(phone_number, restaurant_id, opted_in):
-    """Update customer opt-in status"""
-    if not db:
-        return
-    
-    phone = clean_phone_number(phone_number)
-    customer_id = f"{phone}_{restaurant_id}"
-    customer_ref = db.collection('customers').document(customer_id)
-    
-    if customer_ref.get().exists:
-        customer_ref.update({"opted_in": opted_in})
-        print(f"✅ Updated {customer_id}: opted_in = {opted_in}")
 
 # ============================================================
 # Flask Routes - General
@@ -257,6 +233,7 @@ def create_transaction():
             print("❌ Missing required fields")
             return jsonify({"status": "error", "error": "Missing required fields"}), 400
         
+        # Save simplified transaction
         print(f"💾 Saving transaction to Firebase...")
         db.collection('transactions').document(transaction_id).set({
             'transaction_id': transaction_id,
@@ -264,14 +241,11 @@ def create_transaction():
             'restaurant_id': restaurant_id,
             'bill_amount': float(bill_amount),
             'points_earned': int(points_earned),
-            'status': 'completed',
-            'created_at': datetime.now(),
-            'claimed_at': datetime.now(),
-            'added_by': data.get('added_by', 'frontend'),
-            'notes': data.get('notes', '')
+            'claimed_at': datetime.now()
         })
-        print(f"✅ Transaction saved as COMPLETED: {transaction_id}")
+        print(f"✅ Transaction saved: {transaction_id}")
         
+        # Update or create customer with simplified schema
         print(f"👤 Updating customer profile...")
         customer_id = f"{customer_phone}_{restaurant_id}"
         customer_ref = db.collection('customers').document(customer_id)
@@ -300,12 +274,9 @@ def create_transaction():
                 'phone_number': customer_phone,
                 'customer_name': customer_name,
                 'restaurant_id': restaurant_id,
-                'restaurant_name': 'Zest Restaurant',
                 'points_balance': int(points_earned),
                 'total_points_earned': int(points_earned),
                 'total_visits': 1,
-                'opted_in': False,
-                'status': 'active',
                 'registered_at': datetime.now(),
                 'last_visit': datetime.now()
             })
@@ -334,9 +305,7 @@ def create_transaction():
 
 @app.route('/check-balance', methods=['GET'])
 def check_balance():
-    """
-    Query params: phone (required) - phone number
-    """
+    """Query params: phone (required) - phone number"""
     phone = request.args.get('phone')
     if not phone:
         return jsonify({"status": "error", "error": "Missing phone parameter"}), 400
@@ -369,9 +338,7 @@ def redeem_points():
     {
       "customer_phone": "919876543210",
       "points_to_redeem": 100,
-      "reward_name": "Points Redemption",
-      "reward_description": "Redeem points",
-      "redeemed_by": "frontend"
+      "reward_description": "Redeem points"
     }
     """
     data = request.get_json()
@@ -389,9 +356,7 @@ def redeem_points():
     if points_to_redeem <= 0:
         return jsonify({"status":"error","error":"points_to_redeem must be > 0"}), 400
 
-    reward_name = data.get('reward_name') or "Points Redemption"
     reward_description = data.get('reward_description') or "Redeemed loyalty points"
-    redeemed_by = data.get('redeemed_by') or "frontend"
     restaurant_id = data.get('restaurant_id') or RESTAURANT_ID
 
     customer_id = f"{customer_phone}_{restaurant_id}"
@@ -416,18 +381,15 @@ def redeem_points():
         redemption_id = f"R{new_count:04d}"
 
         now = datetime.now()
+        
+        # Simplified redemption document
         redemption_doc = {
             "redemption_id": redemption_id,
             "customer_phone": customer_phone,
             "points_redeemed": int(points_to_redeem),
-            "reward_name": reward_name,
             "reward_description": reward_description,
-            "reward_value": int(points_to_redeem),
             "restaurant_id": restaurant_id,
-            "redeemed_by": redeemed_by,
-            "status": "completed",
-            "created_at": now,
-            "completed_at": now
+            "created_at": now
         }
 
         redemption_ref = db.collection('redemptions').document(redemption_id)
@@ -622,56 +584,6 @@ Visit our restaurant and provide your phone number at checkout to start earning 
                     
                     send_text(from_number, message_text)
                 
-                elif text.upper() == "YES":
-                    print("✅ Processing opt-in...")
-                    
-                    customer = get_customer(from_number, RESTAURANT_ID)
-                    
-                    if customer:
-                        update_optin_status(from_number, RESTAURANT_ID, True)
-                        
-                        message_text = """Perfect! 🎉
-
-You're now subscribed to exclusive offers from Zest Restaurant.
-
-You'll receive:
-✨ Special deals & promotions
-🎂 Birthday surprises
-🎁 Exclusive early access
-
-Reply NO anytime to unsubscribe.
-
-Thank you! 💎"""
-                    else:
-                        message_text = """Please visit our restaurant first! 😊
-
-Provide your phone number at checkout to create your account."""
-                    
-                    send_text(from_number, message_text)
-                
-                elif text.upper() == "NO":
-                    print("❌ Processing opt-out...")
-                    
-                    customer = get_customer(from_number, RESTAURANT_ID)
-                    
-                    if customer:
-                        update_optin_status(from_number, RESTAURANT_ID, False)
-                        message_text = """No problem! 😊
-
-You can still collect and redeem points with every visit.
-
-Reply YES anytime to get exclusive offers.
-
-Thank you! 🙏"""
-                    else:
-                        message_text = """No problem! 😊
-
-You can still earn points by visiting our restaurant and providing your phone number at checkout.
-
-Thank you! 🙏"""
-                    
-                    send_text(from_number, message_text)
-                
                 else:
                     print(f"❓ Unknown command: {text}")
                     
@@ -679,8 +591,6 @@ Thank you! 🙏"""
 
 Commands:
 💰 BALANCE - Check your points
-🎁 YES - Subscribe to exclusive offers
-🚫 NO - Decline offers
 
 💡 How to earn points:
 Visit our restaurant and provide your phone number at checkout!
