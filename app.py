@@ -3,7 +3,8 @@ from flask_cors import CORS
 import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
-from datetime import datetime
+from firebase_admin import firestore as admin_firestore  # ← For Increment
+from datetime import datetime, timedelta  # ← Added timedelta for campaigns
 import os
 import base64
 import json
@@ -27,17 +28,14 @@ RESTAURANT_ID = os.environ.get('RESTAURANT_ID', 'rest_001')
 # ============================================================
 
 try:
-    # Check if running on cloud (has environment variable)
     firebase_creds_base64 = os.environ.get('FIREBASE_CREDENTIALS_BASE64')
     
     if firebase_creds_base64:
-        # Deployment: Decode base64 credentials
         print("🔐 Using Firebase credentials from environment variable")
         cred_json = base64.b64decode(firebase_creds_base64)
         cred_dict = json.loads(cred_json)
         cred = credentials.Certificate(cred_dict)
     else:
-        # Local development: Use file
         print("📁 Using Firebase credentials from file")
         cred = credentials.Certificate("firebase-credentials.json")
     
@@ -56,9 +54,20 @@ def clean_phone_number(phone):
     """Remove + sign and clean phone number"""
     if not phone:
         return None
-    # Remove +, spaces, dashes
     cleaned = phone.replace('+', '').replace(' ', '').replace('-', '')
     return cleaned
+
+def _increment_counter_transaction(transaction, counter_ref):
+    """Increments or creates counter. Returns new integer counter value."""
+    snapshot = counter_ref.get(transaction=transaction)
+    if snapshot.exists:
+        current = snapshot.get('count') or 0
+        new = int(current) + 1
+        transaction.update(counter_ref, {'count': new})
+    else:
+        new = 1
+        transaction.set(counter_ref, {'count': new})
+    return new
 
 # ============================================================
 # WhatsApp Functions
@@ -84,6 +93,91 @@ def send_text(to_number, message):
     response = requests.post(url, json=payload, headers=headers)
     print(f"📤 Sent to {clean_number}: {response.status_code}")
     return response.json()
+
+# ============================================================
+# Campaign Functions
+# ============================================================
+
+def get_customers_by_segment(segment, restaurant_id=None):
+    """
+    Get customers based on segment type
+    
+    Segments:
+    - all: All opted-in customers
+    - vip: Customers with 500+ points
+    - inactive: Haven't visited in 30+ days
+    - active: Visited in last 30 days
+    - high_points: 200+ points
+    """
+    if not db:
+        return []
+    
+    rest_id = restaurant_id or RESTAURANT_ID
+    
+    try:
+        if segment == 'vip':
+            # VIP customers with 500+ points
+            customers_ref = db.collection('customers')\
+                .where('restaurant_id', '==', rest_id)\
+                .where('points_balance', '>=', 500)\
+                .where('opted_in', '==', True)\
+                .stream()
+                
+        elif segment == 'inactive':
+            # Inactive customers (30+ days since last visit)
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            customers_ref = db.collection('customers')\
+                .where('restaurant_id', '==', rest_id)\
+                .where('last_visit', '<', thirty_days_ago)\
+                .where('opted_in', '==', True)\
+                .stream()
+                
+        elif segment == 'active':
+            # Active customers (visited in last 30 days)
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            customers_ref = db.collection('customers')\
+                .where('restaurant_id', '==', rest_id)\
+                .where('last_visit', '>=', thirty_days_ago)\
+                .where('opted_in', '==', True)\
+                .stream()
+                
+        elif segment == 'high_points':
+            # Customers with 200+ points
+            customers_ref = db.collection('customers')\
+                .where('restaurant_id', '==', rest_id)\
+                .where('points_balance', '>=', 200)\
+                .where('opted_in', '==', True)\
+                .stream()
+                
+        else:  # 'all' or default
+            # All opted-in customers
+            customers_ref = db.collection('customers')\
+                .where('restaurant_id', '==', rest_id)\
+                .where('opted_in', '==', True)\
+                .stream()
+        
+        # Convert to list
+        customers = []
+        for customer in customers_ref:
+            customers.append(customer.to_dict())
+        
+        return customers
+        
+    except Exception as e:
+        print(f"❌ Error getting customers: {e}")
+        return []
+
+def personalize_message(message, customer_data):
+    """Replace placeholders with customer data"""
+    personalized = message
+    
+    # Replace placeholders
+    personalized = personalized.replace('{name}', customer_data.get('customer_name', 'Valued Customer'))
+    personalized = personalized.replace('{points}', str(customer_data.get('points_balance', 0)))
+    personalized = personalized.replace('{visits}', str(customer_data.get('total_visits', 0)))
+    personalized = personalized.replace('{restaurant}', customer_data.get('restaurant_name', 'Restaurant'))
+    
+    return personalized
 
 # ============================================================
 # Firebase Functions
@@ -128,7 +222,7 @@ def home():
     return "✅ ZestRewards API is running!"
 
 # ============================================================
-# Flask Routes - Frontend API
+# Flask Routes - Transaction API
 # ============================================================
 
 @app.route('/create-transaction', methods=['POST'])
@@ -148,7 +242,7 @@ def create_transaction():
     try:
         transaction_id = data.get('transaction_id')
         customer_phone = clean_phone_number(data.get('customer_phone'))
-        customer_name = data.get('customer_name', '').strip()
+        customer_name = data.get('customer_name', '').strip() or data.get('cashier_name', '').strip()
         restaurant_id = data.get('restaurant_id', RESTAURANT_ID)
         bill_amount = data.get('bill_amount')
         points_earned = data.get('points_earned')
@@ -159,12 +253,10 @@ def create_transaction():
         print(f"✓ Bill: {bill_amount}")
         print(f"✓ Points: {points_earned}")
         
-        # Validate required fields
         if not all([transaction_id, customer_phone, bill_amount, points_earned]):
             print("❌ Missing required fields")
             return jsonify({"status": "error", "error": "Missing required fields"}), 400
         
-        # Save to transactions collection with status "completed"
         print(f"💾 Saving transaction to Firebase...")
         db.collection('transactions').document(transaction_id).set({
             'transaction_id': transaction_id,
@@ -180,7 +272,6 @@ def create_transaction():
         })
         print(f"✅ Transaction saved as COMPLETED: {transaction_id}")
         
-        # Update or create customer (adds points immediately)
         print(f"👤 Updating customer profile...")
         customer_id = f"{customer_phone}_{restaurant_id}"
         customer_ref = db.collection('customers').document(customer_id)
@@ -190,7 +281,6 @@ def create_transaction():
             print(f"  → Customer exists, adding points...")
             current = customer_snap.to_dict()
             
-            # Update points and visits
             update_data = {
                 'points_balance': current.get('points_balance', 0) + int(points_earned),
                 'total_points_earned': current.get('total_points_earned', 0) + int(points_earned),
@@ -198,7 +288,6 @@ def create_transaction():
                 'last_visit': datetime.now()
             }
             
-            # Update name if provided and not already set
             if customer_name and not current.get('customer_name'):
                 update_data['customer_name'] = customer_name
                 print(f"  → Setting customer name: {customer_name}")
@@ -240,6 +329,235 @@ def create_transaction():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 # ============================================================
+# Flask Routes - Redemption API
+# ============================================================
+
+@app.route('/check-balance', methods=['GET'])
+def check_balance():
+    """
+    Query params: phone (required) - phone number
+    """
+    phone = request.args.get('phone')
+    if not phone:
+        return jsonify({"status": "error", "error": "Missing phone parameter"}), 400
+
+    phone_clean = clean_phone_number(phone)
+    customer_id = f"{phone_clean}_{RESTAURANT_ID}"
+
+    try:
+        cust_ref = db.collection('customers').document(customer_id)
+        cust_snap = cust_ref.get()
+        if not cust_snap.exists:
+            return jsonify({"status": "ok", "found": False, "message": "Customer not found"}), 200
+
+        cust = cust_snap.to_dict()
+        if cust.get('registered_at'):
+            cust['registered_at'] = cust['registered_at'].isoformat()
+        if cust.get('last_visit'):
+            cust['last_visit'] = cust['last_visit'].isoformat()
+
+        return jsonify({"status": "ok", "found": True, "customer": cust}), 200
+
+    except Exception as e:
+        print("ERROR check_balance:", e)
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+@app.route('/redeem', methods=['POST'])
+def redeem_points():
+    """
+    Body JSON:
+    {
+      "customer_phone": "919876543210",
+      "points_to_redeem": 100,
+      "reward_name": "Points Redemption",
+      "reward_description": "Redeem points",
+      "redeemed_by": "frontend"
+    }
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"status":"error","error":"No JSON payload received"}), 400
+
+    customer_phone = clean_phone_number(data.get('customer_phone'))
+    try:
+        points_to_redeem = int(data.get('points_to_redeem', 0))
+    except Exception:
+        return jsonify({"status":"error","error":"points_to_redeem must be an integer"}), 400
+
+    if not customer_phone:
+        return jsonify({"status":"error","error":"customer_phone required"}), 400
+    if points_to_redeem <= 0:
+        return jsonify({"status":"error","error":"points_to_redeem must be > 0"}), 400
+
+    reward_name = data.get('reward_name') or "Points Redemption"
+    reward_description = data.get('reward_description') or "Redeemed loyalty points"
+    redeemed_by = data.get('redeemed_by') or "frontend"
+    restaurant_id = data.get('restaurant_id') or RESTAURANT_ID
+
+    customer_id = f"{customer_phone}_{restaurant_id}"
+    customer_ref = db.collection('customers').document(customer_id)
+    counter_ref = db.collection('counters').document('redemption_counter')
+
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def _txn_redeem(transaction):
+        cust_snap = customer_ref.get(transaction=transaction)
+        if not cust_snap.exists:
+            raise ValueError("Customer not found")
+
+        cust = cust_snap.to_dict()
+        current_balance = int(cust.get('points_balance', 0))
+
+        if points_to_redeem > current_balance:
+            raise ValueError("Insufficient points")
+
+        new_count = _increment_counter_transaction(transaction, counter_ref)
+        redemption_id = f"R{new_count:04d}"
+
+        now = datetime.now()
+        redemption_doc = {
+            "redemption_id": redemption_id,
+            "customer_phone": customer_phone,
+            "points_redeemed": int(points_to_redeem),
+            "reward_name": reward_name,
+            "reward_description": reward_description,
+            "reward_value": int(points_to_redeem),
+            "restaurant_id": restaurant_id,
+            "redeemed_by": redeemed_by,
+            "status": "completed",
+            "created_at": now,
+            "completed_at": now
+        }
+
+        redemption_ref = db.collection('redemptions').document(redemption_id)
+        transaction.set(redemption_ref, redemption_doc)
+
+        new_balance = current_balance - int(points_to_redeem)
+
+        update_data = {
+            "points_balance": new_balance,
+            "last_redeemed_at": now,
+            "total_points_redeemed": admin_firestore.Increment(int(points_to_redeem))
+        }
+        transaction.update(customer_ref, update_data)
+
+        return {
+            "redemption_id": redemption_id,
+            "new_balance": new_balance,
+            "created_at": now.isoformat()
+        }
+
+    try:
+        result = _txn_redeem(transaction)
+        return jsonify({
+            "status": "ok",
+            "message": "Redeemed successfully",
+            "redemption_id": result['redemption_id'],
+            "new_balance": result['new_balance'],
+            "created_at": result['created_at']
+        }), 200
+
+    except ValueError as ve:
+        return jsonify({"status": "error", "error": str(ve)}), 400
+
+    except Exception as e:
+        print("ERROR redeem_points:", e)
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status":"error","error":str(e)}), 500
+
+# ============================================================
+# Flask Routes - Campaign API
+# ============================================================
+
+@app.route('/send-campaign', methods=['POST'])
+def send_campaign():
+    """
+    Send campaign messages to customer segments
+    
+    Request body:
+    {
+        "segment": "all|vip|inactive|active|high_points",
+        "message": "Campaign message with {name} and {points} placeholders",
+        "restaurant_id": "rest_001" (optional)
+    }
+    """
+    print("\n" + "="*60)
+    print("📢 CAMPAIGN REQUEST RECEIVED")
+    print("="*60)
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        segment = data.get('segment', 'all')
+        message = data.get('message')
+        restaurant_id = data.get('restaurant_id', RESTAURANT_ID)
+        
+        if not message:
+            return jsonify({"error": "Message is required"}), 400
+        
+        print(f"📊 Segment: {segment}")
+        print(f"💬 Message template: {message[:50]}...")
+        print(f"🏪 Restaurant: {restaurant_id}")
+        
+        # Get customers in segment
+        customers = get_customers_by_segment(segment, restaurant_id)
+        print(f"👥 Found {len(customers)} customers in segment")
+        
+        if len(customers) == 0:
+            return jsonify({
+                "success": True,
+                "sent_count": 0,
+                "message": "No customers found in this segment"
+            }), 200
+        
+        # Send to each customer
+        sent_count = 0
+        failed_count = 0
+        
+        for customer in customers:
+            try:
+                # Personalize message
+                personalized_msg = personalize_message(message, customer)
+                
+                # Send WhatsApp message
+                result = send_text(customer['phone_number'], personalized_msg)
+                
+                if result:
+                    sent_count += 1
+                    print(f"  ✅ Sent to {customer.get('customer_name', 'Customer')}")
+                else:
+                    failed_count += 1
+                    print(f"  ❌ Failed to {customer.get('customer_name', 'Customer')}")
+                    
+            except Exception as e:
+                failed_count += 1
+                print(f"  ❌ Error sending to customer: {e}")
+        
+        print("="*60)
+        print(f"✅ Campaign complete: {sent_count} sent, {failed_count} failed")
+        print("="*60 + "\n")
+        
+        return jsonify({
+            "success": True,
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "total_targeted": len(customers),
+            "segment": segment,
+            "message": f"Campaign sent to {sent_count} customers"
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Campaign error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+# ============================================================
 # Flask Routes - WhatsApp Webhook
 # ============================================================
 
@@ -278,9 +596,6 @@ def receive_message():
                 print(f"📱 From: {from_number}")
                 print(f"💬 Message: {text}")
                 
-                # ============================================
-                # Handle BALANCE - Check Points
-                # ============================================
                 if text.upper() == "BALANCE":
                     print(f"💰 Balance check for {from_number}")
                     
@@ -307,9 +622,6 @@ Visit our restaurant and provide your phone number at checkout to start earning 
                     
                     send_text(from_number, message_text)
                 
-                # ============================================
-                # Handle YES - Opt In
-                # ============================================
                 elif text.upper() == "YES":
                     print("✅ Processing opt-in...")
                     
@@ -337,9 +649,6 @@ Provide your phone number at checkout to create your account."""
                     
                     send_text(from_number, message_text)
                 
-                # ============================================
-                # Handle NO - Opt Out
-                # ============================================
                 elif text.upper() == "NO":
                     print("❌ Processing opt-out...")
                     
@@ -363,9 +672,6 @@ Thank you! 🙏"""
                     
                     send_text(from_number, message_text)
                 
-                # ============================================
-                # Unknown Command - Help
-                # ============================================
                 else:
                     print(f"❓ Unknown command: {text}")
                     
@@ -383,7 +689,6 @@ Questions? Contact restaurant staff."""
                     
                     send_text(from_number, message_text)
         
-        # Log status updates
         elif 'statuses' in value:
             status = value['statuses'][0]
             print(f"📊 Status: {status.get('status')}")
@@ -412,6 +717,5 @@ if __name__ == '__main__':
         print(f"🔥 Firebase: Not connected ❌")
     print("=" * 60)
     
-    # Use environment variable PORT if available (for deployment)
     port = int(os.environ.get('PORT', 8000))
     app.run(host='0.0.0.0', port=port, debug=False)

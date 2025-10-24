@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZestRewards - Create Transaction</title>
+    <title>ZestRewards - Point Management</title>
     <style>
         * {
             margin: 0;
@@ -27,7 +27,47 @@
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
             max-width: 500px;
             width: 100%;
+            overflow: hidden;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f5f5f5;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 16px;
+            text-align: center;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #666;
+            transition: all 0.3s ease;
+            font-size: 15px;
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .tab:hover:not(.active) {
+            background: #e8e8e8;
+        }
+
+        .content {
             padding: 40px;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
         }
 
         .header {
@@ -118,6 +158,15 @@
             transform: none;
         }
 
+        button.secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        button.secondary:hover:not(:disabled) {
+            background: #d0d0d0;
+        }
+
         .error {
             background: #fee;
             color: #c33;
@@ -187,203 +236,440 @@
             color: #667eea;
             display: none;
         }
+
+        .balance-box {
+            background: #e8f5e9;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 15px 0;
+            text-align: center;
+            border-left: 4px solid #4caf50;
+        }
+
+        .balance-amount {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2e7d32;
+        }
+
+        .balance-label {
+            font-size: 13px;
+            color: #555;
+            margin-top: 4px;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .button-row button {
+            flex: 1;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <div class="logo">🎊</div>
-            <h1>ZestRewards</h1>
-            <p class="subtitle">Create New Transaction</p>
+        <div class="tabs">
+            <button class="tab active" data-tab="add">➕ Add Points</button>
+            <button class="tab" data-tab="redeem">🎁 Redeem Points</button>
         </div>
 
-        <div class="error" id="errorMsg"></div>
-        <div class="success" id="successMsg"></div>
+        <div class="content">
+            <!-- Add Points Tab -->
+            <div class="tab-content active" id="add-tab">
+                <div class="header">
+                    <div class="logo">🎊</div>
+                    <h1>Add Points</h1>
+                    <p class="subtitle">Create new transaction and add points</p>
+                </div>
 
-        <form id="transactionForm">
-            <div class="form-group">
-                <label for="phone">Phone Number *</label>
-                <input 
-                    type="tel" 
-                    id="phone" 
-                    name="phone" 
-                    placeholder="919876543210"
-                    required
-                >
-                <div class="input-hint">Enter phone with country code (e.g., 919876543210)</div>
+                <div class="error" id="errorMsg1"></div>
+                <div class="success" id="successMsg1"></div>
+
+                <form id="transactionForm">
+                    <div class="form-group">
+                        <label for="phone1">Phone Number *</label>
+                        <input 
+                            type="tel" 
+                            id="phone1" 
+                            placeholder="919876543210"
+                            required
+                        >
+                        <div class="input-hint">Enter phone with country code</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="name1">Customer Name (Optional)</label>
+                        <input 
+                            type="text" 
+                            id="name1" 
+                            placeholder="e.g., Rahul Kumar"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="bill1">Bill Amount (₹) *</label>
+                        <input 
+                            type="number" 
+                            id="bill1" 
+                            placeholder="500"
+                            min="1"
+                            step="0.01"
+                            required
+                        >
+                        <div class="input-hint">Enter amount in rupees</div>
+                        <div class="points-display" id="pointsDisplay1"></div>
+                    </div>
+
+                    <button type="submit">Create Transaction</button>
+                    <div class="loading" id="loading1">
+                        <span class="spinner"></span>Processing...
+                    </div>
+                </form>
+
+                <div class="info-box">
+                    <strong>Info:</strong><br>
+                    Customer will receive WhatsApp notification with points added.
+                </div>
             </div>
 
-            <div class="form-group">
-                <label for="name">Customer Name (Optional)</label>
-                <input 
-                    type="text" 
-                    id="name" 
-                    name="name" 
-                    placeholder="e.g., Rahul Kumar"
-                >
-                <div class="input-hint">Customer's full name</div>
-            </div>
+            <!-- Redeem Points Tab -->
+            <div class="tab-content" id="redeem-tab">
+                <div class="header">
+                    <div class="logo">🎁</div>
+                    <h1>Redeem Points</h1>
+                    <p class="subtitle">Check balance and redeem customer points</p>
+                </div>
 
-            <div class="form-group">
-                <label for="bill">Bill Amount (₹) *</label>
-                <input 
-                    type="number" 
-                    id="bill" 
-                    name="bill" 
-                    placeholder="500"
-                    min="1"
-                    step="0.01"
-                    required
-                >
-                <div class="input-hint">Enter amount in rupees</div>
-                <div class="points-display" id="pointsDisplay"></div>
-            </div>
+                <div class="error" id="errorMsg2"></div>
+                <div class="success" id="successMsg2"></div>
 
-            <button type="submit">Create Transaction</button>
-            <div class="loading" id="loading">
-                <span class="spinner"></span>Processing...
-            </div>
-        </form>
+                <div class="form-group">
+                    <label for="phone2">Phone Number *</label>
+                    <input 
+                        type="tel" 
+                        id="phone2" 
+                        placeholder="919876543210"
+                        required
+                    >
+                    <div class="input-hint">Enter phone with country code</div>
+                </div>
 
-        <div class="info-box">
-            <strong>Info:</strong><br>
-            Customer will receive WhatsApp notification with points added to their account.
+                <div class="button-row">
+                    <button id="checkBtn">Check Balance</button>
+                    <button id="clearBtn" class="secondary">Clear</button>
+                </div>
+
+                <div id="balanceSection" style="display:none">
+                    <div class="balance-box">
+                        <div class="balance-amount" id="balanceAmount">0</div>
+                        <div class="balance-label">Available Points</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="points2">Points to Redeem *</label>
+                        <input 
+                            type="number" 
+                            id="points2" 
+                            placeholder="Enter points (e.g., 100)"
+                            min="1"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="rewardDesc">Reward Description (Optional)</label>
+                        <input 
+                            type="text" 
+                            id="rewardDesc" 
+                            placeholder="e.g., ₹100 discount at billing"
+                        >
+                    </div>
+
+                    <button id="redeemBtn">Redeem Points</button>
+                    <div class="loading" id="loading2">
+                        <span class="spinner"></span>Processing...
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <strong>Tip:</strong> 1 point = ₹1. If customer doesn't exist, create transaction first in Add Points tab.
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        const form = document.getElementById('transactionForm');
-        const nameInput = document.getElementById('name');
-        const phoneInput = document.getElementById('phone');
-        const billInput = document.getElementById('bill');
-        const errorMsg = document.getElementById('errorMsg');
-        const successMsg = document.getElementById('successMsg');
-        const loading = document.getElementById('loading');
-        const pointsDisplay = document.getElementById('pointsDisplay');
-
         const RESTAURANT_ID = "rest_001";
         const POINTS_RATE = 10;
         const BACKEND_URL = "https://zr-q3p2.onrender.com";
 
-        function showError(msg) {
-            errorMsg.textContent = msg;
-            errorMsg.style.display = 'block';
-            successMsg.style.display = 'none';
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+                
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                
+                tab.classList.add('active');
+                document.getElementById(tabName + '-tab').classList.add('active');
+                
+                hideAllMessages();
+            });
+        });
+
+        // Helper functions
+        function showError(msgId, text) {
+            const el = document.getElementById(msgId);
+            el.textContent = text;
+            el.style.display = 'block';
+            document.getElementById(msgId.replace('errorMsg', 'successMsg')).style.display = 'none';
         }
 
-        function showSuccess(msg) {
-            successMsg.textContent = msg;
-            successMsg.style.display = 'block';
-            errorMsg.style.display = 'none';
+        function showSuccess(msgId, text) {
+            const el = document.getElementById(msgId);
+            el.textContent = text;
+            el.style.display = 'block';
+            document.getElementById(msgId.replace('successMsg', 'errorMsg')).style.display = 'none';
         }
 
-        function hideMessages() {
-            errorMsg.style.display = 'none';
-            successMsg.style.display = 'none';
+        function hideMessages(errorId, successId) {
+            document.getElementById(errorId).style.display = 'none';
+            document.getElementById(successId).style.display = 'none';
         }
 
-        function formatPhoneNumber(phone) {
-            // Remove all non-digits
+        function hideAllMessages() {
+            hideMessages('errorMsg1', 'successMsg1');
+            hideMessages('errorMsg2', 'successMsg2');
+        }
+
+        function cleanPhone(phone) {
+            if (!phone) return null;
             const digits = phone.replace(/\D/g, '');
-            
-            // Should be 10 digits (mobile) or 12 digits (with country code)
-            if (digits.length === 10) {
-                return '91' + digits;  // No + sign
-            } else if (digits.length === 12 && digits.startsWith('91')) {
-                return digits;  // Already has 91, no + sign
-            } else if (digits.length > 10) {
-                return digits;  // Return as is, no + sign
-            }
+            if (digits.length === 10) return '91' + digits;
+            if (digits.length === 12 && digits.startsWith('91')) return digits;
+            if (digits.length > 10) return digits;
             return null;
         }
 
-        billInput.addEventListener('input', (e) => {
+        // ========================================
+        // ADD POINTS TAB
+        // ========================================
+        
+        const form1 = document.getElementById('transactionForm');
+        const phone1 = document.getElementById('phone1');
+        const name1 = document.getElementById('name1');
+        const bill1 = document.getElementById('bill1');
+        const pointsDisplay1 = document.getElementById('pointsDisplay1');
+        const loading1 = document.getElementById('loading1');
+
+        bill1.addEventListener('input', (e) => {
             const bill = parseFloat(e.target.value);
             if (bill && bill > 0) {
                 const points = Math.floor(bill / POINTS_RATE);
-                pointsDisplay.textContent = 'Points Earned: ' + points + ' points';
-                pointsDisplay.style.display = 'block';
+                pointsDisplay1.textContent = '💰 Points Earned: ' + points + ' points';
+                pointsDisplay1.style.display = 'block';
             } else {
-                pointsDisplay.style.display = 'none';
+                pointsDisplay1.style.display = 'none';
             }
         });
 
-        form.addEventListener('submit', async (e) => {
+        form1.addEventListener('submit', async (e) => {
             e.preventDefault();
-            hideMessages();
+            hideMessages('errorMsg1', 'successMsg1');
 
-            const name = nameInput.value.trim();
-            const phone = phoneInput.value.trim();
-            const bill = parseFloat(billInput.value);
+            const phone = cleanPhone(phone1.value.trim());
+            const name = name1.value.trim();
+            const bill = parseFloat(bill1.value);
 
-            const formattedPhone = formatPhoneNumber(phone);
-            if (!formattedPhone) {
-                showError('Please enter a valid phone number');
+            if (!phone) {
+                showError('errorMsg1', 'Please enter a valid phone number');
                 return;
             }
 
             if (bill < 1) {
-                showError('Bill amount must be at least 1 rupee');
+                showError('errorMsg1', 'Bill amount must be at least ₹1');
                 return;
             }
 
-            loading.style.display = 'block';
-            const submitBtn = form.querySelector('button[type="submit"]');
+            loading1.style.display = 'block';
+            const submitBtn = form1.querySelector('button[type="submit"]');
             submitBtn.disabled = true;
 
             try {
                 const pointsEarned = Math.floor(bill / POINTS_RATE);
-                const transactionId = 'txn_' + formattedPhone + '_' + Math.floor(Date.now() / 1000);
-
-                const transactionData = {
-                    transaction_id: transactionId,
-                    customer_phone: formattedPhone,  // No + sign
-                    customer_name: name || "",  // ← CHANGED: Send customer_name instead of cashier_name
-                    restaurant_id: RESTAURANT_ID,
-                    bill_amount: bill,
-                    points_earned: pointsEarned,
-                    added_by: "frontend",
-                    notes: ""
-                };
-
-                console.log('Sending to backend:', transactionData);
+                const transactionId = 'txn_' + phone + '_' + Math.floor(Date.now() / 1000);
 
                 const response = await fetch(BACKEND_URL + '/create-transaction', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(transactionData)
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        transaction_id: transactionId,
+                        customer_phone: phone,
+                        customer_name: name || "",
+                        restaurant_id: RESTAURANT_ID,
+                        bill_amount: bill,
+                        points_earned: pointsEarned,
+                        added_by: "frontend",
+                        notes: ""
+                    })
                 });
 
                 const data = await response.json();
-                console.log('Backend response:', data);
 
                 if (response.ok) {
-                    const customerName = name || formattedPhone;
-                    showSuccess(`Transaction created! ${pointsEarned} points added for ${customerName}`);
-                    form.reset();
-                    pointsDisplay.style.display = 'none';
+                    const customerName = name || phone;
+                    showSuccess('successMsg1', `✅ Transaction created! ${pointsEarned} points added for ${customerName}`);
+                    form1.reset();
+                    pointsDisplay1.style.display = 'none';
                 } else {
-                    showError(data.error || 'Failed to create transaction');
+                    showError('errorMsg1', data.error || 'Failed to create transaction');
                 }
-
             } catch (error) {
                 console.error('Error:', error);
-                showError('Network error. Make sure backend is running on ' + BACKEND_URL);
+                showError('errorMsg1', 'Network error. Please check connection.');
             } finally {
-                loading.style.display = 'none';
+                loading1.style.display = 'none';
                 submitBtn.disabled = false;
             }
         });
 
-        // Auto-format phone number as user types (no + sign)
-        phoneInput.addEventListener('input', (e) => {
+        // Auto-format phone
+        phone1.addEventListener('input', (e) => {
             let value = e.target.value.replace(/\D/g, '');
-            if (value.length > 12) {
-                value = value.slice(0, 12);
-            }
+            if (value.length > 12) value = value.slice(0, 12);
             e.target.value = value;
+        });
+
+        // ========================================
+        // REDEEM POINTS TAB
+        // ========================================
+        
+        const phone2 = document.getElementById('phone2');
+        const points2 = document.getElementById('points2');
+        const rewardDesc = document.getElementById('rewardDesc');
+        const balanceSection = document.getElementById('balanceSection');
+        const balanceAmount = document.getElementById('balanceAmount');
+        const loading2 = document.getElementById('loading2');
+        const checkBtn = document.getElementById('checkBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const redeemBtn = document.getElementById('redeemBtn');
+
+        let currentCustomer = null;
+
+        phone2.addEventListener('input', (e) => {
+            let value = e.target.value.replace(/\D/g, '');
+            if (value.length > 12) value = value.slice(0, 12);
+            e.target.value = value;
+        });
+
+        clearBtn.addEventListener('click', () => {
+            hideMessages('errorMsg2', 'successMsg2');
+            phone2.value = '';
+            points2.value = '';
+            rewardDesc.value = '';
+            balanceSection.style.display = 'none';
+            currentCustomer = null;
+        });
+
+        checkBtn.addEventListener('click', async () => {
+            hideMessages('errorMsg2', 'successMsg2');
+            
+            const phone = cleanPhone(phone2.value.trim());
+            if (!phone) {
+                showError('errorMsg2', 'Please enter a valid phone number');
+                return;
+            }
+
+            checkBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/check-balance?phone=${encodeURIComponent(phone)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showError('errorMsg2', data.error || 'Error checking balance');
+                    return;
+                }
+
+                if (!data.found) {
+                    showError('errorMsg2', 'Customer not found. Create a transaction first in Add Points tab.');
+                    return;
+                }
+
+                const customer = data.customer;
+                const balance = customer.points_balance || 0;
+                
+                currentCustomer = { phone, balance };
+                balanceAmount.textContent = balance;
+                balanceSection.style.display = 'block';
+                
+                showSuccess('successMsg2', '✅ Balance loaded successfully');
+            } catch (error) {
+                console.error('Error:', error);
+                showError('errorMsg2', 'Network error while checking balance');
+            } finally {
+                checkBtn.disabled = false;
+            }
+        });
+
+        redeemBtn.addEventListener('click', async () => {
+            hideMessages('errorMsg2', 'successMsg2');
+
+            if (!currentCustomer) {
+                showError('errorMsg2', 'Please check balance first');
+                return;
+            }
+
+            const pointsToRedeem = parseInt(points2.value || '0', 10);
+            
+            if (!pointsToRedeem || pointsToRedeem <= 0) {
+                showError('errorMsg2', 'Please enter a valid points amount');
+                return;
+            }
+
+            if (pointsToRedeem > currentCustomer.balance) {
+                showError('errorMsg2', 'Insufficient points. Available: ' + currentCustomer.balance);
+                return;
+            }
+
+            loading2.style.display = 'block';
+            redeemBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/redeem`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        customer_phone: currentCustomer.phone,
+                        points_to_redeem: pointsToRedeem,
+                        reward_name: "Points Redemption",
+                        reward_description: rewardDesc.value.trim() || "Redeemed loyalty points",
+                        redeemed_by: "frontend"
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    showError('errorMsg2', data.error || 'Redeem failed');
+                    return;
+                }
+
+                showSuccess('successMsg2', `✅ Redeemed ${pointsToRedeem} points! New balance: ${data.new_balance}. ID: ${data.redemption_id}`);
+                
+                currentCustomer.balance = data.new_balance;
+                balanceAmount.textContent = data.new_balance;
+                points2.value = '';
+                rewardDesc.value = '';
+            } catch (error) {
+                console.error('Error:', error);
+                showError('errorMsg2', 'Network error while redeeming');
+            } finally {
+                loading2.style.display = 'none';
+                redeemBtn.disabled = false;
+            }
         });
     </script>
 </body>
