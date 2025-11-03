@@ -19,7 +19,7 @@ CORS(app)
 # ============================================================
 
 WHATSAPP_TOKEN = os.environ.get('WHATSAPP_TOKEN', 'EAAQnezZAE2U4BPk6F39fdDbF4NzIYZCPffdBL9qIZAJabVBPVd0F5qigPnY7U0zrasRNCjNM62IW4UsEEquZAUCNo0YwXx6uTO47mlZAfbMVcMqYRtbMwrcXAGDbnscusyJuoGw3ZC92bIZAKfHvaWdPrq28rKIJoWvF84mhZAvPOX2RQXp2rYg2eIimvh3jGneRPQZDZD')
-PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID', '788247724379268')
+PHONE_NUMBER_ID = os.environ.get('PHONE_NUMBER_ID', '831001625976586')
 VERIFY_TOKEN = os.environ.get('VERIFY_TOKEN', 'zest_rewards_webhook_2025')
 RESTAURANT_ID = os.environ.get('RESTAURANT_ID', 'rest_001')
 
