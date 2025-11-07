@@ -13,18 +13,7 @@ app = Flask(__name__)
 
 # Enable CORS for frontend
 # Enable CORS for multiple restaurant domains
-CORS(app, resources={
-    r"/*": {
-        "origins": [
-            "http://localhost:*",
-            "https://*.github.io",
-            "https://*.zestrewards.com",
-            "*"  # Remove this in production, list specific domains
-        ],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
-    }
-})
+CORS(app)
 
 
 # ============================================================
