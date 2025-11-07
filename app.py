@@ -12,7 +12,20 @@ import json
 app = Flask(__name__)
 
 # Enable CORS for frontend
-CORS(app)
+# Enable CORS for multiple restaurant domains
+CORS(app, resources={
+    r"/*": {
+        "origins": [
+            "http://localhost:*",
+            "https://*.github.io",
+            "https://*.zestrewards.com",
+            "*"  # Remove this in production, list specific domains
+        ],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
+
 
 # ============================================================
 # Configuration
@@ -311,7 +324,11 @@ def check_balance():
         return jsonify({"status": "error", "error": "Missing phone parameter"}), 400
 
     phone_clean = clean_phone_number(phone)
-    customer_id = f"{phone_clean}_{RESTAURANT_ID}"
+    restaurant_id = request.args.get('restaurant_id', RESTAURANT_ID)  # ← Add this line
+    customer_id = f"{phone_clean}_{restaurant_id}"  # ← Use parameter instead
+
+    print(f"💰 Balance check - Phone: {phone_clean}, Restaurant: {restaurant_id}")  # ← Add logging
+
 
     try:
         cust_ref = db.collection('customers').document(customer_id)
