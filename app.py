@@ -84,26 +84,66 @@ def _increment_counter_transaction(transaction, counter_ref):
 # ============================================================
 
 
+def send_text_dynamic(restaurant_id, to_number, message):
+    """
+    Send WhatsApp text message using restaurant-specific credentials
+    Fetches phone_number_id and access_token from Firebase
+    """
+    try:
+        # Fetch restaurant credentials from Firebase
+        restaurant_ref = db.collection('restaurants').document(restaurant_id)
+        restaurant_snap = restaurant_ref.get()
+        
+        if not restaurant_snap.exists:
+            print(f"❌ Restaurant {restaurant_id} not found in Firebase")
+            # Fallback to environment variables
+            phone_number_id = PHONE_NUMBER_ID
+            access_token = WHATSAPP_TOKEN
+            print(f"⚠️ Using fallback credentials from environment")
+        else:
+            restaurant_data = restaurant_snap.to_dict()
+            phone_number_id = restaurant_data.get('phone_number_id', PHONE_NUMBER_ID)
+            access_token = restaurant_data.get('access_token', WHATSAPP_TOKEN)
+            
+            if not phone_number_id or not access_token:
+                print(f"❌ Missing WhatsApp credentials for restaurant {restaurant_id}")
+                # Fallback to environment
+                phone_number_id = PHONE_NUMBER_ID
+                access_token = WHATSAPP_TOKEN
+        
+        clean_number = clean_phone_number(to_number)
+        
+        url = f"https://graph.facebook.com/v21.0/{phone_number_id}/messages"
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": clean_number,
+            "type": "text",
+            "text": {"body": message}
+        }
+        
+        response = requests.post(url, json=payload, headers=headers)
+        print(f"📤 Sent to {clean_number} via {restaurant_id}: {response.status_code}")
+        
+        if response.status_code != 200:
+            print(f"❌ WhatsApp API Error: {response.text}")
+        
+        return response.json()
+        
+    except Exception as e:
+        print(f"❌ Error in send_text_dynamic: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
+
+
 def send_text(to_number, message):
-    """Send WhatsApp text message"""
-    clean_number = clean_phone_number(to_number)
-    
-    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "messaging_product": "whatsapp",
-        "to": clean_number,
-        "type": "text",
-        "text": {"body": message}
-    }
-    
-    response = requests.post(url, json=payload, headers=headers)
-    print(f"📤 Sent to {clean_number}: {response.status_code}")
-    return response.json()
+    """Legacy function for backward compatibility - uses environment variables"""
+    return send_text_dynamic(RESTAURANT_ID, to_number, message)
 
 
 # ============================================================
@@ -627,10 +667,10 @@ def send_campaign():
                 # Personalize message
                 personalized_msg = personalize_message(message, customer)
                 
-                # Send WhatsApp message
-                result = send_text(customer['phone_number'], personalized_msg)
+                # Send WhatsApp message - USE DYNAMIC VERSION
+                result = send_text_dynamic(restaurant_id, customer['phone_number'], personalized_msg)
                 
-                if result:
+                if result and not result.get('error'):
                     sent_count += 1
                     print(f"  ✅ Sent to {customer.get('customer_name', 'Customer')}")
                 else:
@@ -656,6 +696,204 @@ def send_campaign():
         
     except Exception as e:
         print(f"❌ Campaign error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# ============================================================
+# Flask Routes - Meta Embedded Signup
+# ============================================================
+
+
+@app.route('/meta-callback', methods=['GET'])
+def meta_callback():
+    """
+    Meta Embedded Signup callback
+    Receives authorization code, exchanges for token, stores in Firebase
+    
+    Query params:
+      - code: Authorization code from Meta
+      - state: Optional restaurant_id
+    """
+    print("\n" + "="*60)
+    print("🔗 META EMBEDDED SIGNUP CALLBACK")
+    print("="*60)
+    
+    try:
+        code = request.args.get('code')
+        state = request.args.get('state')  # Optional restaurant_id
+        
+        if not code:
+            return jsonify({"error": "Missing authorization code"}), 400
+        
+        print(f"📥 Received code: {code[:20]}...")
+        print(f"📥 State (restaurant_id): {state}")
+        
+        # Step 1: Exchange code for access token
+        token_url = "https://graph.facebook.com/v21.0/oauth/access_token"
+        token_params = {
+            "client_id": os.environ.get('META_APP_ID'),
+            "client_secret": os.environ.get('META_APP_SECRET'),
+            "code": code
+        }
+        
+        print("🔄 Exchanging code for access token...")
+        token_response = requests.get(token_url, params=token_params)
+        token_data = token_response.json()
+        
+        if 'error' in token_data:
+            print(f"❌ Token exchange failed: {token_data}")
+            return jsonify({"error": "Failed to exchange code", "details": token_data}), 400
+        
+        access_token = token_data.get('access_token')
+        print(f"✅ Access token received: {access_token[:20]}...")
+        
+        # Step 2: Get token debug info to find WABA ID
+        debug_url = f"https://graph.facebook.com/v21.0/debug_token?input_token={access_token}&access_token={access_token}"
+        debug_response = requests.get(debug_url)
+        debug_data = debug_response.json()
+        
+        granular_scopes = debug_data.get('data', {}).get('granular_scopes', [])
+        print(f"📋 Granted scopes: {granular_scopes}")
+        
+        # Extract WABA ID
+        waba_id = None
+        for scope in granular_scopes:
+            if scope.get('scope') == 'whatsapp_business_messaging':
+                waba_id = scope.get('target_ids', [None])[0]
+                break
+        
+        if not waba_id:
+            return jsonify({"error": "Could not determine WABA ID from token"}), 400
+        
+        print(f"✅ WABA ID: {waba_id}")
+        
+        # Step 3: Get phone numbers for this WABA
+        phone_url = f"https://graph.facebook.com/v21.0/{waba_id}/phone_numbers?access_token={access_token}"
+        phone_response = requests.get(phone_url)
+        phone_data = phone_response.json()
+        
+        if 'error' in phone_data or not phone_data.get('data'):
+            return jsonify({"error": "No phone numbers found for WABA", "details": phone_data}), 400
+        
+        # Get first phone number
+        phone_info = phone_data['data'][0]
+        phone_number_id = phone_info['id']
+        display_phone = phone_info.get('display_phone_number')
+        verified_name = phone_info.get('verified_name')
+        
+        print(f"✅ Phone Number ID: {phone_number_id}")
+        print(f"✅ Display Number: {display_phone}")
+        print(f"✅ Verified Name: {verified_name}")
+        
+        # Step 4: Get Business Manager ID
+        business_id = debug_data.get('data', {}).get('app_id')
+        
+        # Generate restaurant_id if not provided
+        if not state:
+            state = f"rest_{display_phone[-6:]}" if display_phone else f"rest_{phone_number_id[-6:]}"
+        
+        restaurant_id = state
+        
+        # Step 5: Store in Firebase with your schema
+        now = datetime.now(timezone.utc)
+        restaurant_data = {
+            "restaurant_id": restaurant_id,
+            "restaurant_name": verified_name or "New Restaurant",
+            "points_expiry_days": 90,
+            "created_at": now,
+            
+            "business_id": business_id,
+            "business_name": verified_name,
+            "waba_id": waba_id,
+            "phone_number_id": phone_number_id,
+            "display_phone_number": display_phone,
+            "access_token": access_token,
+            "connected_at": now
+        }
+        
+        db.collection('restaurants').document(restaurant_id).set(restaurant_data, merge=True)
+        print(f"✅ Restaurant {restaurant_id} saved to Firebase")
+        
+        print("="*60)
+        print("✅ META SIGNUP COMPLETE")
+        print("="*60 + "\n")
+        
+        # Return success HTML page
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>WhatsApp Connected!</title>
+            <style>
+                body {{
+                    font-family: 'Segoe UI', sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                }}
+                .container {{
+                    background: white;
+                    padding: 50px;
+                    border-radius: 16px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    text-align: center;
+                    max-width: 600px;
+                }}
+                h1 {{ color: #667eea; margin-bottom: 20px; font-size: 32px; }}
+                .checkmark {{ color: #4caf50; font-size: 80px; margin-bottom: 20px; }}
+                .info {{
+                    background: #f5f7ff;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin: 30px 0;
+                    text-align: left;
+                    border-left: 4px solid #667eea;
+                }}
+                .info p {{ margin: 10px 0; font-size: 15px; }}
+                .info strong {{ color: #667eea; }}
+                .btn {{
+                    display: inline-block;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                    padding: 14px 32px;
+                    border-radius: 8px;
+                    text-decoration: none;
+                    font-weight: 600;
+                    margin-top: 20px;
+                    transition: transform 0.2s;
+                }}
+                .btn:hover {{ transform: translateY(-2px); }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="checkmark">✅</div>
+                <h1>WhatsApp Successfully Connected!</h1>
+                <p>Your restaurant is now integrated with ZestRewards</p>
+                <div class="info">
+                    <p><strong>Restaurant ID:</strong> {restaurant_id}</p>
+                    <p><strong>Phone Number:</strong> {display_phone}</p>
+                    <p><strong>Business Name:</strong> {verified_name}</p>
+                    <p><strong>WABA ID:</strong> {waba_id}</p>
+                </div>
+                <a href="https://YOUR-GITHUB-USERNAME.github.io/zestrewards-frontend/?rest_id={restaurant_id}" class="btn">
+                    Open Your Dashboard →
+                </a>
+                <p style="margin-top: 30px; font-size: 13px; color: #666;">
+                    Save your Restaurant ID: <code style="background:#f0f0f0;padding:4px 8px;border-radius:4px;">{restaurant_id}</code>
+                </p>
+            </div>
+        </body>
+        </html>
+        """, 200
+        
+    except Exception as e:
+        print(f"❌ ERROR in meta_callback: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -693,6 +931,26 @@ def receive_message():
     try:
         value = data['entry'][0]['changes'][0]['value']
         
+        # Determine which restaurant this message belongs to
+        metadata = value.get('metadata', {})
+        phone_number_id = metadata.get('phone_number_id')
+        
+        # Find restaurant by phone_number_id
+        restaurant_id = RESTAURANT_ID  # Default fallback
+        if phone_number_id:
+            print(f"🔍 Looking for restaurant with phone_number_id: {phone_number_id}")
+            restaurants_query = db.collection('restaurants')\
+                .where('phone_number_id', '==', phone_number_id)\
+                .limit(1)\
+                .stream()
+            
+            for rest_doc in restaurants_query:
+                restaurant_id = rest_doc.id
+                print(f"✅ Matched message to restaurant: {restaurant_id}")
+                break
+        
+        print(f"📍 Using restaurant_id: {restaurant_id}")
+        
         if 'messages' in value:
             message = value['messages'][0]
             from_number = clean_phone_number(message['from'])
@@ -705,7 +963,7 @@ def receive_message():
                 if text.upper() == "BALANCE":
                     print(f"💰 Balance check for {from_number}")
                     
-                    customer = get_customer(from_number, RESTAURANT_ID)
+                    customer = get_customer(from_number, restaurant_id)
                     
                     if customer:
                         registered = customer.get('registered_at')
@@ -729,7 +987,7 @@ Visit us again to earn more! 🎉"""
 
 Visit our restaurant and provide your phone number at checkout to start earning points! 🎁"""
                     
-                    send_text(from_number, message_text)
+                    send_text_dynamic(restaurant_id, from_number, message_text)
                 
                 else:
                     print(f"❓ Unknown command: {text}")
@@ -747,7 +1005,7 @@ Visit our restaurant and provide your phone number at checkout!
 
 Questions? Contact restaurant staff."""
                     
-                    send_text(from_number, message_text)
+                    send_text_dynamic(restaurant_id, from_number, message_text)
         
         elif 'statuses' in value:
             status = value['statuses'][0]
