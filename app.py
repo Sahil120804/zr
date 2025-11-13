@@ -158,6 +158,40 @@ def send_text(to_number, message, restaurant_id=None):
     return {"error": "Max retries exceeded"}
 
 
+def send_template_message(phone_number, template_name, params):
+    """
+    Send WhatsApp template message (no 24-hour limit)
+    """
+    clean_number = clean_phone_number(phone_number)
+    
+    url = f"https://graph.facebook.com/v21.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": clean_number,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": "en_US"},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": p} for p in params]
+                }
+            ]
+        }
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+    print(f"[TEMPLATE SEND] → {clean_number}: {response.status_code}\n{response.text}\n")
+    return response.json()
+
+
+
 # ============================================================
 # Campaign Functions
 # ============================================================
@@ -711,6 +745,72 @@ def send_campaign():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+    
+
+
+@app.route('/send-template-campaign', methods=['POST'])
+def send_template_campaign():
+    """
+    Send campaign using WhatsApp TEMPLATE messages (No 24hr limit)
+    
+    POST body:
+    {
+        "segment": "all | vip | inactive | active | high_points",
+        "restaurant_id": "rest_001",
+        "template_name": "your_template"
+    }
+    """
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "Missing request body"}), 400
+
+    segment = data.get("segment", "all")
+    restaurant_id = data.get("restaurant_id", RESTAURANT_ID)
+    template_name = data.get("template_name")
+
+    if not template_name:
+        return jsonify({"error": "template_name is required"}), 400
+
+    customers = get_customers_by_segment(segment, restaurant_id)
+    total = len(customers)
+
+    if total == 0:
+        return jsonify({"success": False, "message": "No customers found"}), 200
+
+    sent, failed = 0, 0
+
+    for cust in customers:
+        try:
+            name = cust.get("customer_name", "Customer")
+            points = str(cust.get("points_balance", 0))
+
+            params = [name, points]   # matches {{1}} and {{2}}
+
+            result = send_template_message(
+                cust["phone_number"],
+                template_name,
+                params
+            )
+
+            if "messages" in result:
+                sent += 1
+            else:
+                failed += 1
+
+        except Exception as err:
+            print("Error sending:", err)
+            failed += 1
+
+    return jsonify({
+        "success": True,
+        "template": template_name,
+        "segment": segment,
+        "total_customers": total,
+        "sent": sent,
+        "failed": failed
+    }), 200
+
 
 
 # ============================================================
