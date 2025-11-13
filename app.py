@@ -752,13 +752,10 @@ def send_campaign():
 def send_template_campaign():
     """
     Send campaign using WhatsApp TEMPLATE messages (No 24hr limit)
-    
-    POST body:
-    {
-        "segment": "all | vip | inactive | active | high_points",
-        "restaurant_id": "rest_001",
-        "template_name": "your_template"
-    }
+    with 3 variables:
+    {{1}} = customer_name
+    {{2}} = points_balance
+    {{3}} = restaurant_name (from Firestore)
     """
 
     data = request.get_json()
@@ -772,6 +769,14 @@ def send_template_campaign():
     if not template_name:
         return jsonify({"error": "template_name is required"}), 400
 
+    # 🎯 1. Fetch restaurant name from Firestore
+    rest_doc = db.collection('restaurants').document(restaurant_id).get()
+    if rest_doc.exists:
+        restaurant_name = rest_doc.to_dict().get('restaurant_name', "Our Restaurant")
+    else:
+        restaurant_name = "Our Restaurant"
+
+    # 🎯 2. Get customers
     customers = get_customers_by_segment(segment, restaurant_id)
     total = len(customers)
 
@@ -782,11 +787,14 @@ def send_template_campaign():
 
     for cust in customers:
         try:
-            name = cust.get("customer_name", "Customer")
-            points = str(cust.get("points_balance", 0))
+            # 🎯 3. Build params dynamically for template
+            params = [
+                cust.get("customer_name", "Customer"),       # {{1}}
+                str(cust.get("points_balance", 0)),          # {{2}}
+                restaurant_name                              # {{3}}
+            ]
 
-            params = [name, points]   # matches {{1}} and {{2}}
-
+            # 🎯 4. Send template message
             result = send_template_message(
                 cust["phone_number"],
                 template_name,
@@ -806,10 +814,12 @@ def send_template_campaign():
         "success": True,
         "template": template_name,
         "segment": segment,
+        "restaurant_name": restaurant_name,
         "total_customers": total,
         "sent": sent,
         "failed": failed
     }), 200
+
 
 
 
