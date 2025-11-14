@@ -176,7 +176,7 @@ def send_template_message(phone_number, template_name, params):
         "type": "template",
         "template": {
             "name": template_name,
-            "language": {"code": "en_US"},
+            "language": {"code": "en"},
             "components": [
                 {
                     "type": "body",
