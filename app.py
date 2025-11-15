@@ -67,17 +67,7 @@ def clean_phone_number(phone):
     return cleaned
 
 
-def _increment_counter_transaction(transaction, counter_ref):
-    """Increments or creates counter. Returns new integer counter value."""
-    snapshot = counter_ref.get(transaction=transaction)
-    if snapshot.exists:
-        current = snapshot.get('count') or 0
-        new = int(current) + 1
-        transaction.update(counter_ref, {'count': new})
-    else:
-        new = 1
-        transaction.set(counter_ref, {'count': new})
-    return new
+
 
 
 # ============================================================
@@ -547,6 +537,11 @@ def redeem_points():
 
     @firestore.transactional
     def _txn_redeem(transaction):
+        # ========================================
+        # PHASE 1: ALL READS MUST COME FIRST
+        # ========================================
+        
+        # Read 1: Get customer
         cust_snap = customer_ref.get(transaction=transaction)
         if not cust_snap.exists:
             raise ValueError("Customer not found")
@@ -554,11 +549,19 @@ def redeem_points():
         cust = cust_snap.to_dict()
         current_balance = int(cust.get('points_balance', 0))
 
-        # CHECK BALANCE FIRST - Use customer's points_balance
+        # Validate balance
         if points_to_redeem > current_balance:
             raise ValueError(f"Insufficient points. Available: {current_balance}")
 
-        # Try to consume from point_events (FIFO by expiry)
+        # Read 2: Get counter BEFORE incrementing
+        counter_snap = counter_ref.get(transaction=transaction)
+        if counter_snap.exists:
+            current_count = int(counter_snap.get('count') or 0)
+            new_count = current_count + 1
+        else:
+            new_count = 1
+
+        # Read 3: Get all point events
         pe_query = db.collection('point_events')\
                      .where('customer_phone', '==', customer_phone)\
                      .where('restaurant_id', '==', restaurant_id)\
@@ -566,54 +569,89 @@ def redeem_points():
                      .order_by('expires_at')\
                      .limit(200)
 
+        point_events_to_update = []
+        for pe_doc in pe_query.stream():
+            pe_data = pe_doc.to_dict()
+            point_events_to_update.append({
+                'ref': pe_doc.reference,
+                'id': pe_doc.id,
+                'data': pe_data
+            })
+
+        # ========================================
+        # PHASE 2: PROCESS DATA (NO DB OPS)
+        # ========================================
+        
         remaining_to_consume = points_to_redeem
         consumed_events = []
 
-        for pe_doc in pe_query.stream():
+        for pe_item in point_events_to_update:
             if remaining_to_consume <= 0:
                 break
 
-            pe = pe_doc.to_dict()
-            pe_id = pe_doc.id
-            avail = int(pe.get('remaining', pe.get('points', 0) or 0))
+            pe_data = pe_item['data']
+            avail = int(pe_data.get('remaining', pe_data.get('points', 0) or 0))
+            
             if avail <= 0:
                 continue
 
             use = min(avail, remaining_to_consume)
             new_remaining = avail - use
-            pe_ref = db.collection('point_events').document(pe_id)
 
-            if new_remaining == 0:
-                transaction.update(pe_ref, {
-                    'remaining': 0,
-                    'status': 'redeemed',
-                    'redeemed_at': datetime.now(timezone.utc)
-                })
-            else:
-                transaction.update(pe_ref, {
-                    'remaining': new_remaining,
-                    'status': 'partial',
-                    'redeemed_at': datetime.now(timezone.utc)
-                })
-
-            consumed_events.append({"point_event_id": pe_id, "used": use})
+            # Store update info
+            pe_item['use'] = use
+            pe_item['new_remaining'] = new_remaining
+            
+            consumed_events.append({
+                "point_event_id": pe_item['id'],
+                "used": use
+            })
+            
             remaining_to_consume -= use
 
-        # If events don't cover full amount, create a synthetic event record
-        # This handles cases where points_balance is correct but events are missing/expired
+        # Handle synthetic event if needed
         if remaining_to_consume > 0:
             print(f"⚠️ WARNING: {remaining_to_consume} points not found in events, but customer has {current_balance} balance")
-            print(f"   Creating synthetic redemption record for missing points")
             consumed_events.append({
                 "point_event_id": "synthetic_balance_correction",
                 "used": remaining_to_consume
             })
 
-        # Generate redemption ID
-        new_count = _increment_counter_transaction(transaction, counter_ref)
-        redemption_id = f"R{new_count:04d}"
-
+        # ========================================
+        # PHASE 3: ALL WRITES COME LAST
+        # ========================================
+        
         now = datetime.now(timezone.utc)
+
+        # Write 1: Update counter
+        if counter_snap.exists:
+            transaction.update(counter_ref, {'count': new_count})
+        else:
+            transaction.set(counter_ref, {'count': new_count})
+
+        # Write 2: Update point events
+        for pe_item in point_events_to_update:
+            if 'use' not in pe_item:
+                continue
+                
+            pe_ref = pe_item['ref']
+            new_remaining = pe_item['new_remaining']
+            
+            if new_remaining == 0:
+                transaction.update(pe_ref, {
+                    'remaining': 0,
+                    'status': 'redeemed',
+                    'redeemed_at': now
+                })
+            else:
+                transaction.update(pe_ref, {
+                    'remaining': new_remaining,
+                    'status': 'partial',
+                    'redeemed_at': now
+                })
+
+        # Write 3: Create redemption record
+        redemption_id = f"R{new_count:04d}"
         
         redemption_doc = {
             "redemption_id": redemption_id,
@@ -630,7 +668,7 @@ def redeem_points():
         redemption_ref = db.collection('redemptions').document(redemption_id)
         transaction.set(redemption_ref, redemption_doc)
 
-        # Update customer balance (THIS IS THE SOURCE OF TRUTH)
+        # Write 4: Update customer
         new_balance = current_balance - int(points_to_redeem)
 
         update_data = {
