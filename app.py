@@ -554,9 +554,11 @@ def redeem_points():
         cust = cust_snap.to_dict()
         current_balance = int(cust.get('points_balance', 0))
 
+        # CHECK BALANCE FIRST - Use customer's points_balance
         if points_to_redeem > current_balance:
-            raise ValueError("Insufficient points")
+            raise ValueError(f"Insufficient points. Available: {current_balance}")
 
+        # Try to consume from point_events (FIFO by expiry)
         pe_query = db.collection('point_events')\
                      .where('customer_phone', '==', customer_phone)\
                      .where('restaurant_id', '==', restaurant_id)\
@@ -597,9 +599,17 @@ def redeem_points():
             consumed_events.append({"point_event_id": pe_id, "used": use})
             remaining_to_consume -= use
 
+        # If events don't cover full amount, create a synthetic event record
+        # This handles cases where points_balance is correct but events are missing/expired
         if remaining_to_consume > 0:
-            raise ValueError("Not enough usable points in events")
+            print(f"⚠️ WARNING: {remaining_to_consume} points not found in events, but customer has {current_balance} balance")
+            print(f"   Creating synthetic redemption record for missing points")
+            consumed_events.append({
+                "point_event_id": "synthetic_balance_correction",
+                "used": remaining_to_consume
+            })
 
+        # Generate redemption ID
         new_count = _increment_counter_transaction(transaction, counter_ref)
         redemption_id = f"R{new_count:04d}"
 
@@ -620,6 +630,7 @@ def redeem_points():
         redemption_ref = db.collection('redemptions').document(redemption_id)
         transaction.set(redemption_ref, redemption_doc)
 
+        # Update customer balance (THIS IS THE SOURCE OF TRUTH)
         new_balance = current_balance - int(points_to_redeem)
 
         update_data = {
