@@ -289,7 +289,7 @@ def get_customer(phone_number, restaurant_id):
 
 @app.route('/')
 def home():
-    return "✅ ZestRewards API is running!"
+    return "✅ Feastly API is running!"
 
 
 # ============================================================
@@ -934,7 +934,7 @@ def receive_message():
                         registered = customer.get('registered_at')
                         member_since = registered.strftime('%d %b %Y') if registered else 'N/A'
                         
-                        message_text = f"""💰 ZestRewards Balance
+                        message_text = f"""💰 Feastly Balance
 
 Account Details:
 ━━━━━━━━━━━━━━━━━━━━
@@ -954,7 +954,7 @@ Visit our restaurant and provide your phone number at checkout to start earning 
                 else:
                     print(f"❓ Unknown command: {text}")
                     
-                    message_text = """Welcome to ZestRewards! 👋
+                    message_text = """Welcome to Feastly! 👋
 
 Commands:
 💰 BALANCE - Check your points
@@ -1059,7 +1059,7 @@ def run_expiry():
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🚀 ZestRewards Backend Starting...")
+    print("🚀 Feastly Backend Starting...")
     print(f"📱 Phone Number ID: {PHONE_NUMBER_ID}")
     print(f"🔐 Verify Token: {VERIFY_TOKEN}")
     print(f"🏪 Restaurant ID: {RESTAURANT_ID}")

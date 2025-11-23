@@ -1,578 +1,736 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ZestRewards - Point Management</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Feastly - Point Management</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 20px;
-    }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+      }
 
-    .container {
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-      max-width: 500px;
-      width: 100%;
-      overflow: hidden;
-    }
+      .container {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        max-width: 500px;
+        width: 100%;
+        overflow: hidden;
+      }
 
-    .topbar {
-      padding: 10px 15px;
-      background: #f5f5f5;
-      border-bottom: 1px solid #eee;
-      font-size: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
+      .topbar {
+        padding: 10px 15px;
+        background: #f5f5f5;
+        border-bottom: 1px solid #eee;
+        font-size: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
 
-    .pill {
-      background: #eef;
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-weight: 600;
-      font-size: 12px;
-      color: #334;
-    }
+      .pill {
+        background: #eef;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: 12px;
+        color: #334;
+      }
 
-    .tabs { display: flex; background: #f5f5f5; }
+      .tabs {
+        display: flex;
+        background: #f5f5f5;
+      }
 
-    .tab {
-      flex: 1;
-      padding: 16px;
-      text-align: center;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      background: transparent;
-      color: #666;
-      transition: all 0.3s ease;
-      font-size: 15px;
-    }
+      .tab {
+        flex: 1;
+        padding: 16px;
+        text-align: center;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        color: #666;
+        transition: all 0.3s ease;
+        font-size: 15px;
+      }
 
-    .tab.active {
-      background: white;
-      color: #667eea;
-      border-bottom: 3px solid #667eea;
-    }
+      .tab.active {
+        background: white;
+        color: #667eea;
+        border-bottom: 3px solid #667eea;
+      }
 
-    .tab:hover:not(.active) { background: #e8e8e8; }
+      .tab:hover:not(.active) {
+        background: #e8e8e8;
+      }
 
-    .content { padding: 40px; }
+      .content {
+        padding: 40px;
+      }
 
-    .tab-content { display: none; }
+      .tab-content {
+        display: none;
+      }
 
-    .tab-content.active { display: block; }
+      .tab-content.active {
+        display: block;
+      }
 
-    .header { text-align: center; margin-bottom: 30px; }
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+      }
 
-    .logo { font-size: 40px; margin-bottom: 10px; }
+      .logo {
+        font-size: 40px;
+        margin-bottom: 10px;
+      }
 
-    h1 { color: #333; font-size: 28px; margin-bottom: 8px; }
+      h1 {
+        color: #333;
+        font-size: 28px;
+        margin-bottom: 8px;
+      }
 
-    .subtitle { color: #666; font-size: 14px; }
+      .subtitle {
+        color: #666;
+        font-size: 14px;
+      }
 
-    .form-group { margin-bottom: 20px; }
+      .form-group {
+        margin-bottom: 20px;
+      }
 
-    label {
-      display: block;
-      color: #333;
-      font-weight: 600;
-      margin-bottom: 8px;
-      font-size: 14px;
-    }
+      label {
+        display: block;
+        color: #333;
+        font-weight: 600;
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
 
-    input {
-      width: 100%;
-      padding: 12px 14px;
-      border: 2px solid #e0e0e0;
-      border-radius: 8px;
-      font-size: 16px;
-      transition: all 0.3s ease;
-      font-family: inherit;
-    }
+      input {
+        width: 100%;
+        padding: 12px 14px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        font-family: inherit;
+      }
 
-    input:focus {
-      outline: none;
-      border-color: #667eea;
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
+      input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
 
-    input::placeholder { color: #999; }
+      input::placeholder {
+        color: #999;
+      }
 
-    .input-hint { font-size: 12px; color: #999; margin-top: 5px; }
+      .input-hint {
+        font-size: 12px;
+        color: #999;
+        margin-top: 5px;
+      }
 
-    button {
-      width: 100%;
-      padding: 14px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      margin-top: 10px;
-    }
+      button {
+        width: 100%;
+        padding: 14px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-top: 10px;
+      }
 
-    button:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-    }
+      button:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+      }
 
-    button:active:not(:disabled) { transform: translateY(0); }
+      button:active:not(:disabled) {
+        transform: translateY(0);
+      }
 
-    button:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+        transform: none;
+      }
 
-    button.secondary { background: #e0e0e0; color: #333; }
+      button.secondary {
+        background: #e0e0e0;
+        color: #333;
+      }
 
-    button.secondary:hover:not(:disabled) { background: #d0d0d0; }
+      button.secondary:hover:not(:disabled) {
+        background: #d0d0d0;
+      }
 
-    .error {
-      background: #fee;
-      color: #c33;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      border-left: 4px solid #c33;
-      display: none;
-    }
+      .error {
+        background: #fee;
+        color: #c33;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        border-left: 4px solid #c33;
+        display: none;
+      }
 
-    .success {
-      background: #efe;
-      color: #3c3;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      font-size: 14px;
-      border-left: 4px solid #3c3;
-      display: none;
-    }
+      .success {
+        background: #efe;
+        color: #3c3;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        font-size: 14px;
+        border-left: 4px solid #3c3;
+        display: none;
+      }
 
-    .loading {
-      display: none;
-      text-align: center;
-      color: #667eea;
-      font-size: 14px;
-      margin-top: 10px;
-    }
+      .loading {
+        display: none;
+        text-align: center;
+        color: #667eea;
+        font-size: 14px;
+        margin-top: 10px;
+      }
 
-    .spinner {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border: 2px solid #e0e0e0;
-      border-top-color: #667eea;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin-right: 8px;
-    }
+      .spinner {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border: 2px solid #e0e0e0;
+        border-top-color: #667eea;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin-right: 8px;
+      }
 
-    @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
 
-    .info-box {
-      background: #f5f7ff;
-      border-left: 4px solid #667eea;
-      padding: 12px;
-      border-radius: 6px;
-      font-size: 13px;
-      color: #555;
-      margin-top: 20px;
-    }
+      .info-box {
+        background: #f5f7ff;
+        border-left: 4px solid #667eea;
+        padding: 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        color: #555;
+        margin-top: 20px;
+      }
 
-    .info-box strong { color: #667eea; }
+      .info-box strong {
+        color: #667eea;
+      }
 
-    .points-display {
-      background: #f0f0f0;
-      padding: 12px;
-      border-radius: 8px;
-      margin-top: 10px;
-      text-align: center;
-      font-weight: 600;
-      color: #667eea;
-      display: none;
-    }
+      .points-display {
+        background: #f0f0f0;
+        padding: 12px;
+        border-radius: 8px;
+        margin-top: 10px;
+        text-align: center;
+        font-weight: 600;
+        color: #667eea;
+        display: none;
+      }
 
-    .balance-box {
-      background: #e8f5e9;
-      padding: 16px;
-      border-radius: 8px;
-      margin: 15px 0;
-      text-align: center;
-      border-left: 4px solid #4caf50;
-    }
+      .balance-box {
+        background: #e8f5e9;
+        padding: 16px;
+        border-radius: 8px;
+        margin: 15px 0;
+        text-align: center;
+        border-left: 4px solid #4caf50;
+      }
 
-    .balance-amount { font-size: 24px; font-weight: 700; color: #2e7d32; }
+      .balance-amount {
+        font-size: 24px;
+        font-weight: 700;
+        color: #2e7d32;
+      }
 
-    .balance-label { font-size: 13px; color: #555; margin-top: 4px; }
+      .balance-label {
+        font-size: 13px;
+        color: #555;
+        margin-top: 4px;
+      }
 
-    .button-row { display: flex; gap: 10px; }
+      .button-row {
+        display: flex;
+        gap: 10px;
+      }
 
-    .button-row button { flex: 1; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="topbar">
-      <span><strong>ZestRewards</strong></span>
-      <span id="restaurantTag" class="pill">Loading...</span>
-    </div>
+      .button-row button {
+        flex: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="topbar">
+        <span><strong>Feastly</strong></span>
+        <span id="restaurantTag" class="pill">Loading...</span>
+      </div>
 
-    <div class="tabs">
-      <button class="tab active" data-tab="add">➕ Add Points</button>
-      <button class="tab" data-tab="redeem">🎁 Redeem Points</button>
-    </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="add">➕ Add Points</button>
+        <button class="tab" data-tab="redeem">🎁 Redeem Points</button>
+      </div>
 
-    <div class="content">
-      <!-- Add Points -->
-      <div class="tab-content active" id="add-tab">
-        <div class="header">
-          <div class="logo">🎊</div>
-          <h1>Add Points</h1>
-          <p class="subtitle">Create new transaction and add points</p>
+      <div class="content">
+        <!-- Add Points -->
+        <div class="tab-content active" id="add-tab">
+          <div class="header">
+            <div class="logo">🎊</div>
+            <h1>Add Points</h1>
+            <p class="subtitle">Create new transaction and add points</p>
+          </div>
+
+          <div class="error" id="errorMsg1"></div>
+          <div class="success" id="successMsg1"></div>
+
+          <form id="transactionForm">
+            <div class="form-group">
+              <label for="phone1">Phone Number *</label>
+              <input
+                type="tel"
+                id="phone1"
+                placeholder="919876543210"
+                required
+              />
+              <div class="input-hint">Enter phone with country code</div>
+            </div>
+
+            <div class="form-group">
+              <label for="name1">Customer Name (Optional)</label>
+              <input type="text" id="name1" placeholder="e.g., Rahul Kumar" />
+            </div>
+
+            <div class="form-group">
+              <label for="bill1">Bill Amount (₹) *</label>
+              <input
+                type="number"
+                id="bill1"
+                placeholder="500"
+                min="1"
+                step="0.01"
+                required
+              />
+              <div class="input-hint">Enter amount in rupees</div>
+              <div class="points-display" id="pointsDisplay1"></div>
+            </div>
+
+            <button type="submit">Create Transaction</button>
+            <div class="loading" id="loading1">
+              <span class="spinner"></span>Processing...
+            </div>
+          </form>
+
+          <div class="info-box">
+            <strong>Info:</strong><br />Customer will receive WhatsApp
+            notification with points added.
+          </div>
         </div>
 
-        <div class="error" id="errorMsg1"></div>
-        <div class="success" id="successMsg1"></div>
+        <!-- Redeem Points -->
+        <div class="tab-content" id="redeem-tab">
+          <div class="header">
+            <div class="logo">🎁</div>
+            <h1>Redeem Points</h1>
+            <p class="subtitle">Check balance and redeem customer points</p>
+          </div>
 
-        <form id="transactionForm">
+          <div class="error" id="errorMsg2"></div>
+          <div class="success" id="successMsg2"></div>
+
           <div class="form-group">
-            <label for="phone1">Phone Number *</label>
-            <input type="tel" id="phone1" placeholder="919876543210" required>
+            <label for="phone2">Phone Number *</label>
+            <input type="tel" id="phone2" placeholder="919876543210" required />
             <div class="input-hint">Enter phone with country code</div>
           </div>
 
-          <div class="form-group">
-            <label for="name1">Customer Name (Optional)</label>
-            <input type="text" id="name1" placeholder="e.g., Rahul Kumar">
+          <div class="button-row">
+            <button id="checkBtn">Check Balance</button>
+            <button id="clearBtn" class="secondary">Clear</button>
           </div>
 
-          <div class="form-group">
-            <label for="bill1">Bill Amount (₹) *</label>
-            <input type="number" id="bill1" placeholder="500" min="1" step="0.01" required>
-            <div class="input-hint">Enter amount in rupees</div>
-            <div class="points-display" id="pointsDisplay1"></div>
+          <div id="balanceSection" style="display: none">
+            <div class="balance-box">
+              <div class="balance-amount" id="balanceAmount">0</div>
+              <div class="balance-label">Available Points</div>
+            </div>
+
+            <div class="form-group">
+              <label for="points2">Points to Redeem *</label>
+              <input
+                type="number"
+                id="points2"
+                placeholder="Enter points (e.g., 100)"
+                min="1"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="rewardDesc">Reward Description (Optional)</label>
+              <input
+                type="text"
+                id="rewardDesc"
+                placeholder="e.g., ₹100 discount at billing"
+              />
+            </div>
+
+            <button id="redeemBtn">Redeem Points</button>
+            <div class="loading" id="loading2">
+              <span class="spinner"></span>Processing...
+            </div>
           </div>
 
-          <button type="submit">Create Transaction</button>
-          <div class="loading" id="loading1"><span class="spinner"></span>Processing...</div>
-        </form>
-
-        <div class="info-box"><strong>Info:</strong><br>Customer will receive WhatsApp notification with points added.</div>
-      </div>
-
-      <!-- Redeem Points -->
-      <div class="tab-content" id="redeem-tab">
-        <div class="header">
-          <div class="logo">🎁</div>
-          <h1>Redeem Points</h1>
-          <p class="subtitle">Check balance and redeem customer points</p>
+          <div class="info-box">
+            <strong>Tip:</strong> 1 point = ₹1. If customer doesn't exist,
+            create transaction first in Add Points tab.
+          </div>
         </div>
-
-        <div class="error" id="errorMsg2"></div>
-        <div class="success" id="successMsg2"></div>
-
-        <div class="form-group">
-          <label for="phone2">Phone Number *</label>
-          <input type="tel" id="phone2" placeholder="919876543210" required>
-          <div class="input-hint">Enter phone with country code</div>
-        </div>
-
-        <div class="button-row">
-          <button id="checkBtn">Check Balance</button>
-          <button id="clearBtn" class="secondary">Clear</button>
-        </div>
-
-        <div id="balanceSection" style="display:none">
-          <div class="balance-box">
-            <div class="balance-amount" id="balanceAmount">0</div>
-            <div class="balance-label">Available Points</div>
-          </div>
-
-          <div class="form-group">
-            <label for="points2">Points to Redeem *</label>
-            <input type="number" id="points2" placeholder="Enter points (e.g., 100)" min="1">
-          </div>
-
-          <div class="form-group">
-            <label for="rewardDesc">Reward Description (Optional)</label>
-            <input type="text" id="rewardDesc" placeholder="e.g., ₹100 discount at billing">
-          </div>
-
-          <button id="redeemBtn">Redeem Points</button>
-          <div class="loading" id="loading2"><span class="spinner"></span>Processing...</div>
-        </div>
-
-        <div class="info-box"><strong>Tip:</strong> 1 point = ₹1. If customer doesn't exist, create transaction first in Add Points tab.</div>
       </div>
     </div>
-  </div>
 
-  <script>
-    // ======= CONFIG =======
-    const BACKEND_URL = "https://zr-q3p2.onrender.com";
-    const POINTS_RATE = 10;
+    <script>
+      // ======= CONFIG =======
+      const BACKEND_URL = "https://zr-q3p2.onrender.com";
+      const POINTS_RATE = 10;
 
-    // ======= RESTAURANT FROM URL =======
-    const urlParams = new URLSearchParams(window.location.search);
-    const RESTAURANT_ID = urlParams.get("rest_id");
+      // ======= RESTAURANT FROM URL =======
+      const urlParams = new URLSearchParams(window.location.search);
+      const RESTAURANT_ID = urlParams.get("rest_id");
 
-    if (!RESTAURANT_ID) {
-      alert("⚠️ Missing restaurant ID in URL. Example: ?rest_id=rest_001");
-      document.body.innerHTML = '<div style="text-align:center;padding:50px;font-family:sans-serif;"><h1>⚠️ Configuration Error</h1><p>Missing restaurant ID parameter.</p><p>Contact your administrator.</p></div>';
-      throw new Error("Missing rest_id parameter");
-    }
+      if (!RESTAURANT_ID) {
+        alert("⚠️ Missing restaurant ID in URL. Example: ?rest_id=rest_001");
+        document.body.innerHTML =
+          '<div style="text-align:center;padding:50px;font-family:sans-serif;"><h1>⚠️ Configuration Error</h1><p>Missing restaurant ID parameter.</p><p>Contact your administrator.</p></div>';
+        throw new Error("Missing rest_id parameter");
+      }
 
-    console.log("🏪 Restaurant ID:", RESTAURANT_ID);
-    document.getElementById("restaurantTag").textContent = RESTAURANT_ID;
+      console.log("🏪 Restaurant ID:", RESTAURANT_ID);
+      document.getElementById("restaurantTag").textContent = RESTAURANT_ID;
 
-    // ======= TAB SWITCH =======
-    document.querySelectorAll(".tab").forEach(tab => {
-      tab.addEventListener("click", () => {
-        const tabName = tab.dataset.tab;
-        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-        document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-        tab.classList.add("active");
-        document.getElementById(tabName + "-tab").classList.add("active");
-        hideAllMessages();
+      // ======= TAB SWITCH =======
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          const tabName = tab.dataset.tab;
+          document
+            .querySelectorAll(".tab")
+            .forEach((t) => t.classList.remove("active"));
+          document
+            .querySelectorAll(".tab-content")
+            .forEach((c) => c.classList.remove("active"));
+          tab.classList.add("active");
+          document.getElementById(tabName + "-tab").classList.add("active");
+          hideAllMessages();
+        });
       });
-    });
 
-    // ======= HELPERS =======
-    function showError(id, text) {
-      const e = document.getElementById(id);
-      e.textContent = text;
-      e.style.display = "block";
-      document.getElementById(id.replace("errorMsg","successMsg")).style.display = "none";
-    }
-
-    function showSuccess(id, text) {
-      const e = document.getElementById(id);
-      e.textContent = text;
-      e.style.display = "block";
-      document.getElementById(id.replace("successMsg","errorMsg")).style.display = "none";
-    }
-
-    function hideMessages(eid, sid) {
-      document.getElementById(eid).style.display = "none";
-      document.getElementById(sid).style.display = "none";
-    }
-
-    function hideAllMessages() {
-      hideMessages("errorMsg1","successMsg1");
-      hideMessages("errorMsg2","successMsg2");
-    }
-
-    function cleanPhone(phone) {
-      if (!phone) return null;
-      const digits = phone.replace(/\D/g,"");
-      if (digits.length === 10) return "91" + digits;
-      if (digits.length === 12 && digits.startsWith("91")) return digits;
-      if (digits.length > 10) return digits;
-      return null;
-    }
-
-    // ======= ADD POINTS =======
-    const form1 = document.getElementById("transactionForm");
-    const phone1 = document.getElementById("phone1");
-    const name1 = document.getElementById("name1");
-    const bill1 = document.getElementById("bill1");
-    const pointsDisplay1 = document.getElementById("pointsDisplay1");
-    const loading1 = document.getElementById("loading1");
-
-    bill1.addEventListener("input", e => {
-      const bill = parseFloat(e.target.value);
-      if (bill > 0) {
-        const points = Math.floor(bill / POINTS_RATE);
-        pointsDisplay1.textContent = "💰 Points Earned: " + points + " points";
-        pointsDisplay1.style.display = "block";
-      } else pointsDisplay1.style.display = "none";
-    });
-
-    form1.addEventListener("submit", async e => {
-      e.preventDefault();
-      hideMessages("errorMsg1","successMsg1");
-
-      const phone = cleanPhone(phone1.value.trim());
-      const name = name1.value.trim();
-      const bill = parseFloat(bill1.value);
-      
-      if (!phone) return showError("errorMsg1","Please enter a valid phone number");
-      if (bill < 1) return showError("errorMsg1","Bill amount must be at least ₹1");
-
-      loading1.style.display = "block";
-      const btn = form1.querySelector('button[type="submit"]');
-      btn.disabled = true;
-
-      try {
-        const points = Math.floor(bill / POINTS_RATE);
-        const transactionId = "txn_" + phone + "_" + Date.now();
-
-        console.log("📤 Creating transaction:", {transactionId, phone, name, bill, points, restaurant: RESTAURANT_ID});
-
-        const res = await fetch(`${BACKEND_URL}/create-transaction`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            transaction_id: transactionId,
-            customer_phone: phone,
-            customer_name: name,
-            restaurant_id: RESTAURANT_ID,
-            bill_amount: bill,
-            points_earned: points,
-            added_by: "frontend"
-          })
-        });
-
-        const data = await res.json();
-        console.log("📥 Response:", data);
-
-        if (res.ok) {
-          showSuccess("successMsg1", `✅ ${points} points added for ${name || phone}`);
-          form1.reset();
-          pointsDisplay1.style.display = "none";
-        } else {
-          showError("errorMsg1", data.error || "Failed to create transaction");
-        }
-      } catch (err) {
-        console.error("❌ Transaction error:", err);
-        showError("errorMsg1","Network error. Please check your connection and try again.");
-      } finally {
-        loading1.style.display = "none";
-        btn.disabled = false;
+      // ======= HELPERS =======
+      function showError(id, text) {
+        const e = document.getElementById(id);
+        e.textContent = text;
+        e.style.display = "block";
+        document.getElementById(
+          id.replace("errorMsg", "successMsg")
+        ).style.display = "none";
       }
-    });
 
-    // ======= REDEEM POINTS =======
-    const phone2 = document.getElementById("phone2");
-    const points2 = document.getElementById("points2");
-    const rewardDesc = document.getElementById("rewardDesc");
-    const balanceSection = document.getElementById("balanceSection");
-    const balanceAmount = document.getElementById("balanceAmount");
-    const checkBtn = document.getElementById("checkBtn");
-    const clearBtn = document.getElementById("clearBtn");
-    const redeemBtn = document.getElementById("redeemBtn");
-    const loading2 = document.getElementById("loading2");
+      function showSuccess(id, text) {
+        const e = document.getElementById(id);
+        e.textContent = text;
+        e.style.display = "block";
+        document.getElementById(
+          id.replace("successMsg", "errorMsg")
+        ).style.display = "none";
+      }
 
-    let currentCustomer = null;
+      function hideMessages(eid, sid) {
+        document.getElementById(eid).style.display = "none";
+        document.getElementById(sid).style.display = "none";
+      }
 
-    clearBtn.addEventListener("click", () => {
-      hideMessages("errorMsg2","successMsg2");
-      phone2.value = points2.value = rewardDesc.value = "";
-      balanceSection.style.display = "none";
-      currentCustomer = null;
-    });
+      function hideAllMessages() {
+        hideMessages("errorMsg1", "successMsg1");
+        hideMessages("errorMsg2", "successMsg2");
+      }
 
-    checkBtn.addEventListener("click", async () => {
-      hideMessages("errorMsg2","successMsg2");
-      const phone = cleanPhone(phone2.value.trim());
-      
-      if (!phone) return showError("errorMsg2","Please enter a valid phone number");
-      
-      checkBtn.disabled = true;
+      function cleanPhone(phone) {
+        if (!phone) return null;
+        const digits = phone.replace(/\D/g, "");
+        if (digits.length === 10) return "91" + digits;
+        if (digits.length === 12 && digits.startsWith("91")) return digits;
+        if (digits.length > 10) return digits;
+        return null;
+      }
 
-      try {
-        console.log("📤 Checking balance for:", phone, "Restaurant:", RESTAURANT_ID);
-        
-        const res = await fetch(`${BACKEND_URL}/check-balance?phone=${encodeURIComponent(phone)}&restaurant_id=${encodeURIComponent(RESTAURANT_ID)}`);
-        const data = await res.json();
-        
-        console.log("📥 Balance response:", data);
+      // ======= ADD POINTS =======
+      const form1 = document.getElementById("transactionForm");
+      const phone1 = document.getElementById("phone1");
+      const name1 = document.getElementById("name1");
+      const bill1 = document.getElementById("bill1");
+      const pointsDisplay1 = document.getElementById("pointsDisplay1");
+      const loading1 = document.getElementById("loading1");
 
-        if (!res.ok) {
-          showError("errorMsg2", data.error || "Error checking balance");
+      bill1.addEventListener("input", (e) => {
+        const bill = parseFloat(e.target.value);
+        if (bill > 0) {
+          const points = Math.floor(bill / POINTS_RATE);
+          pointsDisplay1.textContent =
+            "💰 Points Earned: " + points + " points";
+          pointsDisplay1.style.display = "block";
+        } else pointsDisplay1.style.display = "none";
+      });
+
+      form1.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        hideMessages("errorMsg1", "successMsg1");
+
+        const phone = cleanPhone(phone1.value.trim());
+        const name = name1.value.trim();
+        const bill = parseFloat(bill1.value);
+
+        if (!phone)
+          return showError("errorMsg1", "Please enter a valid phone number");
+        if (bill < 1)
+          return showError("errorMsg1", "Bill amount must be at least ₹1");
+
+        loading1.style.display = "block";
+        const btn = form1.querySelector('button[type="submit"]');
+        btn.disabled = true;
+
+        try {
+          const points = Math.floor(bill / POINTS_RATE);
+          const transactionId = "txn_" + phone + "_" + Date.now();
+
+          console.log("📤 Creating transaction:", {
+            transactionId,
+            phone,
+            name,
+            bill,
+            points,
+            restaurant: RESTAURANT_ID,
+          });
+
+          const res = await fetch(`${BACKEND_URL}/create-transaction`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              transaction_id: transactionId,
+              customer_phone: phone,
+              customer_name: name,
+              restaurant_id: RESTAURANT_ID,
+              bill_amount: bill,
+              points_earned: points,
+              added_by: "frontend",
+            }),
+          });
+
+          const data = await res.json();
+          console.log("📥 Response:", data);
+
+          if (res.ok) {
+            showSuccess(
+              "successMsg1",
+              `✅ ${points} points added for ${name || phone}`
+            );
+            form1.reset();
+            pointsDisplay1.style.display = "none";
+          } else {
+            showError(
+              "errorMsg1",
+              data.error || "Failed to create transaction"
+            );
+          }
+        } catch (err) {
+          console.error("❌ Transaction error:", err);
+          showError(
+            "errorMsg1",
+            "Network error. Please check your connection and try again."
+          );
+        } finally {
+          loading1.style.display = "none";
+          btn.disabled = false;
+        }
+      });
+
+      // ======= REDEEM POINTS =======
+      const phone2 = document.getElementById("phone2");
+      const points2 = document.getElementById("points2");
+      const rewardDesc = document.getElementById("rewardDesc");
+      const balanceSection = document.getElementById("balanceSection");
+      const balanceAmount = document.getElementById("balanceAmount");
+      const checkBtn = document.getElementById("checkBtn");
+      const clearBtn = document.getElementById("clearBtn");
+      const redeemBtn = document.getElementById("redeemBtn");
+      const loading2 = document.getElementById("loading2");
+
+      let currentCustomer = null;
+
+      clearBtn.addEventListener("click", () => {
+        hideMessages("errorMsg2", "successMsg2");
+        phone2.value = points2.value = rewardDesc.value = "";
+        balanceSection.style.display = "none";
+        currentCustomer = null;
+      });
+
+      checkBtn.addEventListener("click", async () => {
+        hideMessages("errorMsg2", "successMsg2");
+        const phone = cleanPhone(phone2.value.trim());
+
+        if (!phone)
+          return showError("errorMsg2", "Please enter a valid phone number");
+
+        checkBtn.disabled = true;
+
+        try {
+          console.log(
+            "📤 Checking balance for:",
+            phone,
+            "Restaurant:",
+            RESTAURANT_ID
+          );
+
+          const res = await fetch(
+            `${BACKEND_URL}/check-balance?phone=${encodeURIComponent(
+              phone
+            )}&restaurant_id=${encodeURIComponent(RESTAURANT_ID)}`
+          );
+          const data = await res.json();
+
+          console.log("📥 Balance response:", data);
+
+          if (!res.ok) {
+            showError("errorMsg2", data.error || "Error checking balance");
+            return;
+          }
+
+          if (!data.found) {
+            showError(
+              "errorMsg2",
+              "Customer not found. Create transaction first in Add Points tab."
+            );
+            return;
+          }
+
+          const balance = data.customer.points_balance || 0;
+          currentCustomer = data.customer;
+          balanceAmount.textContent = balance;
+          balanceSection.style.display = "block";
+          showSuccess("successMsg2", "✅ Balance retrieved successfully!");
+        } catch (err) {
+          console.error("❌ Balance check error:", err);
+          showError(
+            "errorMsg2",
+            "Network error. Please check your connection and try again."
+          );
+        } finally {
+          checkBtn.disabled = false;
+        }
+      });
+
+      redeemBtn.addEventListener("click", async () => {
+        hideMessages("errorMsg2", "successMsg2");
+
+        if (!currentCustomer) {
+          showError("errorMsg2", "Please check balance first");
           return;
         }
-        
-        if (!data.found) {
-          showError("errorMsg2","Customer not found. Create transaction first in Add Points tab.");
+
+        const pointsToRedeem = parseInt(points2.value);
+
+        if (!pointsToRedeem || pointsToRedeem <= 0) {
+          showError("errorMsg2", "Please enter valid points amount");
           return;
         }
 
-        const balance = data.customer.points_balance || 0;
-        currentCustomer = data.customer;
-        balanceAmount.textContent = balance;
-        balanceSection.style.display = "block";
-        showSuccess("successMsg2", "✅ Balance retrieved successfully!");
-      } catch (err) {
-        console.error("❌ Balance check error:", err);
-        showError("errorMsg2","Network error. Please check your connection and try again.");
-      } finally {
-        checkBtn.disabled = false;
-      }
-    });
-
-    redeemBtn.addEventListener("click", async () => {
-      hideMessages("errorMsg2","successMsg2");
-      
-      if (!currentCustomer) {
-        showError("errorMsg2","Please check balance first");
-        return;
-      }
-
-      const pointsToRedeem = parseInt(points2.value);
-      
-      if (!pointsToRedeem || pointsToRedeem <= 0) {
-        showError("errorMsg2","Please enter valid points amount");
-        return;
-      }
-      
-      if (pointsToRedeem > currentCustomer.points_balance) {
-        showError("errorMsg2",`Insufficient points. Available: ${currentCustomer.points_balance}`);
-        return;
-      }
-
-      redeemBtn.disabled = true;
-      loading2.style.display = "block";
-
-      try {
-        console.log("📤 Redeeming points:", {phone: currentCustomer.phone_number, points: pointsToRedeem, restaurant: RESTAURANT_ID});
-
-        const res = await fetch(`${BACKEND_URL}/redeem`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            customer_phone: currentCustomer.phone_number,
-            restaurant_id: RESTAURANT_ID,
-            points_to_redeem: pointsToRedeem,
-            reward_description: rewardDesc.value.trim() || "Points redemption"
-          })
-        });
-
-        const data = await res.json();
-        console.log("📥 Redemption response:", data);
-
-        if (res.ok) {
-          showSuccess("successMsg2", `✅ Redeemed ${pointsToRedeem} points successfully! New balance: ${data.new_balance}`);
-          balanceAmount.textContent = data.new_balance;
-          currentCustomer.points_balance = data.new_balance;
-          points2.value = "";
-          rewardDesc.value = "";
-        } else {
-          showError("errorMsg2", data.error || "Redemption failed");
+        if (pointsToRedeem > currentCustomer.points_balance) {
+          showError(
+            "errorMsg2",
+            `Insufficient points. Available: ${currentCustomer.points_balance}`
+          );
+          return;
         }
-      } catch (err) {
-        console.error("❌ Redemption error:", err);
-        showError("errorMsg2","Network error. Please check your connection and try again.");
-      } finally {
-        loading2.style.display = "none";
-        redeemBtn.disabled = false;
-      }
-    });
 
-    console.log("✅ ZestRewards frontend initialized for restaurant:", RESTAURANT_ID);
-  </script>
-</body>
+        redeemBtn.disabled = true;
+        loading2.style.display = "block";
+
+        try {
+          console.log("📤 Redeeming points:", {
+            phone: currentCustomer.phone_number,
+            points: pointsToRedeem,
+            restaurant: RESTAURANT_ID,
+          });
+
+          const res = await fetch(`${BACKEND_URL}/redeem`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customer_phone: currentCustomer.phone_number,
+              restaurant_id: RESTAURANT_ID,
+              points_to_redeem: pointsToRedeem,
+              reward_description:
+                rewardDesc.value.trim() || "Points redemption",
+            }),
+          });
+
+          const data = await res.json();
+          console.log("📥 Redemption response:", data);
+
+          if (res.ok) {
+            showSuccess(
+              "successMsg2",
+              `✅ Redeemed ${pointsToRedeem} points successfully! New balance: ${data.new_balance}`
+            );
+            balanceAmount.textContent = data.new_balance;
+            currentCustomer.points_balance = data.new_balance;
+            points2.value = "";
+            rewardDesc.value = "";
+          } else {
+            showError("errorMsg2", data.error || "Redemption failed");
+          }
+        } catch (err) {
+          console.error("❌ Redemption error:", err);
+          showError(
+            "errorMsg2",
+            "Network error. Please check your connection and try again."
+          );
+        } finally {
+          loading2.style.display = "none";
+          redeemBtn.disabled = false;
+        }
+      });
+
+      console.log(
+        "✅ Feastly frontend initialized for restaurant:",
+        RESTAURANT_ID
+      );
+    </script>
+  </body>
 </html>
