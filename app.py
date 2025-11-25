@@ -942,9 +942,6 @@ Visit our restaurant and provide your phone number at checkout to start earning 
 
                     message_text = """Welcome to Feastly! 👋
 
-Commands:
-BALxxx - Check your points for a specific restaurant (e.g., BAL001)
-
 How to earn points:
 Visit our restaurant and provide your phone number at checkout!
 
