@@ -877,63 +877,50 @@ def send_template_campaign():
 # ============================================================
 
 
-@app.route('/webhook', methods=['GET'])
-def verify_webhook():
-    """Meta webhook verification"""
-    mode = request.args.get('hub.mode')
-    token = request.args.get('hub.verify_token')
-    challenge = request.args.get('hub.challenge')
-    
-    if mode == 'subscribe' and token == VERIFY_TOKEN:
-        print("✅ Webhook verified!")
-        return challenge, 200
-    
-    print("❌ Verification failed!")
-    return 'Forbidden', 403
-
-
 @app.route('/webhook', methods=['POST'])
 def receive_message():
     """Receive messages from Meta WhatsApp (Single WABA)"""
     data = request.get_json()
-    
+
     print("=" * 60)
     print("📨 Webhook received")
     print("=" * 60)
-    
+
     try:
         value = data['entry'][0]['changes'][0]['value']
-        
+
         # Verify this is our phone number
         metadata = value.get('metadata', {})
         incoming_phone_id = metadata.get('phone_number_id')
-        
+
         if incoming_phone_id and incoming_phone_id != PHONE_NUMBER_ID:
             print(f"⚠️ Message for different phone_number_id: {incoming_phone_id}")
             print(f"   Expected: {PHONE_NUMBER_ID}")
-        
-        # Use default restaurant_id for single WABA
-        restaurant_id = RESTAURANT_ID
-        print(f"📍 Using restaurant_id: {restaurant_id}")
-        
+
+        # No default restaurant id! Only explicit from code below.
+
         if 'messages' in value:
             message = value['messages'][0]
             from_number = clean_phone_number(message['from'])
-            
+
             if 'text' in message:
                 text = message['text']['body']
                 print(f"📱 From: {from_number}")
                 print(f"💬 Message: {text}")
-                
-                if text.upper() == "BALANCE":
-                    print(f"💰 Balance check for {from_number}")
-                    
-                    customer = get_customer(from_number, restaurant_id)
-                    
+
+                text_clean = text.strip().upper()
+
+                # Accept ONLY 'BALxxx' pattern (e.g., BAL001, BAL009)
+                if text_clean.startswith("BAL") and len(text_clean) == 6 and text_clean[3:].isdigit():
+                    rest_id = "rest_" + text_clean[3:]
+                    print(f"💰 Balance check for {from_number}, Restaurant: {rest_id}")
+
+                    customer = get_customer(from_number, rest_id)
+
                     if customer:
                         registered = customer.get('registered_at')
                         member_since = registered.strftime('%d %b %Y') if registered else 'N/A'
-                        
+
                         message_text = f"""💰 Feastly Balance
 
 Account Details:
@@ -948,35 +935,36 @@ Visit us again to earn more! 🎉"""
                         message_text = """You don't have an account yet! 😊
 
 Visit our restaurant and provide your phone number at checkout to start earning points! 🎁"""
-                    
-                    send_text(from_number, message_text, restaurant_id)
-                
+
+                    send_text(from_number, message_text, rest_id)
                 else:
-                    print(f"❓ Unknown command: {text}")
-                    
+                    print(f"❓ Unknown or invalid command: {text}")
+
                     message_text = """Welcome to Feastly! 👋
 
 Commands:
-💰 BALANCE - Check your points
+BALxxx - Check your points for a specific restaurant (e.g., BAL001)
 
-💡 How to earn points:
+How to earn points:
 Visit our restaurant and provide your phone number at checkout!
 
 Questions? Contact restaurant staff."""
-                    
-                    send_text(from_number, message_text, restaurant_id)
-        
+
+                    # Optionally, could send with a generic restaurant id or just not pass one.
+                    send_text(from_number, message_text)
+
         elif 'statuses' in value:
             status = value['statuses'][0]
             print(f"📊 Status: {status.get('status')}")
-        
+
         return jsonify({"status": "ok"}), 200
-        
+
     except Exception as e:
         print(f"❌ ERROR: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 # ============================================================
