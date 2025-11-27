@@ -282,31 +282,46 @@ def get_customer(phone_number, restaurant_id):
     return None
 
 # ============================================================
-# NEW FUNCTIONS - Add after get_customer()
+# Onboarding Helper Functions - ADD THESE
 # ============================================================
 
 def get_customer_by_phone_only(phone_number, restaurant_id):
     """Get customer by phone and restaurant"""
+    if not db:
+        return None
+    
     phone = clean_phone_number(phone_number)
     customer_id = f"{phone}_{restaurant_id}"
     customer_ref = db.collection('customers').document(customer_id)
     customer = customer_ref.get()
     
     if customer.exists:
+        print(f"✅ Found existing customer: {customer_id}")
         return customer.to_dict()
+    
+    print(f"ℹ️ No customer found: {customer_id}")
     return None
 
 
 def get_restaurant_code(restaurant_id):
     """Get active signup code for restaurant"""
     if not db:
+        print("❌ Database not connected")
         return None
     
-    rest_doc = db.collection('restaurant_codes').document(restaurant_id).get()
-    
-    if rest_doc.exists:
-        return rest_doc.to_dict().get('active_code')
-    return None
+    try:
+        rest_doc = db.collection('restaurant_codes').document(restaurant_id).get()
+        
+        if rest_doc.exists:
+            code = rest_doc.to_dict().get('active_code')
+            print(f"✅ Restaurant code found: {code}")
+            return code
+        else:
+            print(f"⚠️ No code set for restaurant: {restaurant_id}")
+            return None
+    except Exception as e:
+        print(f"❌ Error getting restaurant code: {e}")
+        return None
 
 
 def validate_signup_code(code_entered, restaurant_id):
@@ -317,22 +332,26 @@ def validate_signup_code(code_entered, restaurant_id):
         return False, "No active code set for this restaurant"
     
     if code_entered.upper().strip() != active_code.upper().strip():
+        print(f"❌ Code mismatch: entered '{code_entered}' vs active '{active_code}'")
         return False, "Invalid code"
     
+    print(f"✅ Code validated: {code_entered}")
     return True, "Valid"
 
 
 def create_onboarding_customer(phone_number, code, restaurant_id):
     """Create new customer during onboarding"""
     if not db:
+        print("❌ Database not connected")
         return False
     
     now = datetime.now(timezone.utc)
-    customer_id = f"{phone_number}_{restaurant_id}"
+    phone_clean = clean_phone_number(phone_number)
+    customer_id = f"{phone_clean}_{restaurant_id}"
     
     try:
         db.collection('customers').document(customer_id).set({
-            'phone_number': phone_number,
+            'phone_number': phone_clean,
             'customer_name': None,
             'restaurant_id': restaurant_id,
             'registered_at': now,
@@ -340,7 +359,10 @@ def create_onboarding_customer(phone_number, code, restaurant_id):
             'signup_code': code,
             'status': 'active',
             'awaiting_name': True,
-            'onboarding_source': 'QR_CODE'
+            'onboarding_source': 'QR_CODE',
+            'points_balance': 0,
+            'total_points_earned': 0,
+            'total_visits': 0
         })
         
         # Increment signup counter
@@ -353,15 +375,19 @@ def create_onboarding_customer(phone_number, code, restaurant_id):
         
     except Exception as e:
         print(f"❌ Error creating customer: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
 def save_customer_name(phone_number, restaurant_id, name):
     """Save customer name after onboarding"""
     if not db:
+        print("❌ Database not connected")
         return False
     
-    customer_id = f"{phone_number}_{restaurant_id}"
+    phone_clean = clean_phone_number(phone_number)
+    customer_id = f"{phone_clean}_{restaurant_id}"
     
     try:
         db.collection('customers').document(customer_id).update({
@@ -375,6 +401,8 @@ def save_customer_name(phone_number, restaurant_id, name):
         
     except Exception as e:
         print(f"❌ Error saving name: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -985,7 +1013,6 @@ def receive_message():
     try:
         value = data['entry'][0]['changes'][0]['value']
 
-        # Verify this is our phone number
         metadata = value.get('metadata', {})
         incoming_phone_id = metadata.get('phone_number_id')
 
@@ -1005,20 +1032,23 @@ def receive_message():
                 text_clean = text.strip()
 
                 # === CHECK IF CUSTOMER EXISTS ===
+                print(f"🔍 Checking if customer exists...")
                 customer = get_customer_by_phone_only(from_number, RESTAURANT_ID)
 
-                # === FLOW 1: Customer is awaiting name ===
+                # === FLOW 1: Customer is awaiting name (just registered) ===
                 if customer and customer.get('awaiting_name'):
-                    print(f"👤 Customer awaiting name")
+                    print(f"👤 Customer is awaiting name entry")
                     
                     name = text_clean.title()
                     
                     # Basic validation
                     if len(name) < 2 or len(name) > 30:
+                        print(f"⚠️ Invalid name length: {len(name)}")
                         send_text(from_number, "Please enter a valid name (2-30 characters).")
                         return jsonify({"status": "ok"}), 200
                     
                     # Save name
+                    print(f"💾 Saving customer name: {name}")
                     if save_customer_name(from_number, RESTAURANT_ID, name):
                         message_text = f"""Perfect, {name}! ✅
 
@@ -1036,12 +1066,25 @@ Stay tuned! 📲"""
                 if customer and customer.get('status') == 'active' and not customer.get('awaiting_name'):
                     print(f"✅ Existing customer: {customer.get('customer_name', 'Unknown')}")
                     
+                    # Check if they sent the valid code
+                    is_valid_code, _ = validate_signup_code(text_clean, RESTAURANT_ID)
+                    
                     customer_name = customer.get('customer_name', 'there')
-                    message_text = f"""Hey {customer_name}! 👋
+                    
+                    if is_valid_code:
+                        print(f"ℹ️ Existing customer sent valid code")
+                        message_text = f"""Hey {customer_name}! 👋
 
-You're already registered with us! 
+You're already registered with us! ✅
 
 Watch out for exclusive offers coming soon! 🎁"""
+                    else:
+                        print(f"ℹ️ Existing customer sent random message")
+                        message_text = f"""Hey {customer_name}! 👋
+
+Thanks for your message! 
+
+Need help? Contact our staff or visit us soon! 😊"""
                     
                     send_text(from_number, message_text)
                     return jsonify({"status": "ok"}), 200
@@ -1051,10 +1094,11 @@ Watch out for exclusive offers coming soon! 🎁"""
                     print(f"🆕 New customer attempting signup")
                     
                     # Validate code
+                    print(f"🔐 Validating code: {text_clean}")
                     is_valid, message = validate_signup_code(text_clean, RESTAURANT_ID)
                     
                     if is_valid:
-                        print(f"✅ Valid code: {text_clean}")
+                        print(f"✅ Valid code! Creating customer...")
                         
                         # Create customer
                         if create_onboarding_customer(from_number, text_clean.upper(), RESTAURANT_ID):
@@ -1066,7 +1110,7 @@ What's your name?
                         else:
                             send_text(from_number, "Sorry, registration failed. Please try again later.")
                     else:
-                        print(f"❌ Invalid code: {text_clean}")
+                        print(f"❌ Invalid code: {text_clean} - Reason: {message}")
                         message_text = """❌ Invalid code.
 
 Please ask the cashier for the correct signup code."""
@@ -1081,11 +1125,10 @@ Please ask the cashier for the correct signup code."""
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"❌ ERROR in webhook: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
-
 
 
 # ============================================================
