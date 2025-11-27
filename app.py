@@ -358,7 +358,7 @@ def create_onboarding_customer(phone_number, code, restaurant_id):
             'last_visit': now,
             'signup_code': code,
             'status': 'active',
-            'awaiting_name': True,
+            'awaiting_name': False,  # Not collecting names
             'onboarding_source': 'QR_CODE',
             'points_balance': 0,
             'total_points_earned': 0,
@@ -555,74 +555,6 @@ def create_transaction():
 # ============================================================
 # Flask Routes - Redemption API
 # ============================================================
-
-
-@app.route('/check-balance', methods=['GET'])
-def check_balance():
-    """Query params: phone (required), restaurant_id (optional), force_recalc (optional)"""
-    phone = request.args.get('phone')
-    if not phone:
-        return jsonify({"status": "error", "error": "Missing phone parameter"}), 400
-
-    phone_clean = clean_phone_number(phone)
-    restaurant_id = request.args.get('restaurant_id', RESTAURANT_ID)
-    force_recalc = request.args.get('force_recalc', 'false').lower() == 'true'
-    customer_id = f"{phone_clean}_{restaurant_id}"
-
-    print(f"💰 Balance check - Phone: {phone_clean}, Restaurant: {restaurant_id}, force_recalc={force_recalc}")
-
-    try:
-        cust_ref = db.collection('customers').document(customer_id)
-        cust_snap = cust_ref.get()
-        if not cust_snap.exists:
-            return jsonify({"status": "ok", "found": False, "message": "Customer not found"}), 200
-
-        cust = cust_snap.to_dict()
-
-        def _iso(ts):
-            try:
-                return ts.astimezone(timezone.utc).isoformat()
-            except Exception:
-                return None
-
-        result = {
-            "status": "ok",
-            "found": True,
-            "customer": {
-                "customer_name": cust.get('customer_name'),
-                "phone_number": cust.get('phone_number'),
-                "points_balance": int(cust.get('points_balance', 0)),
-                "total_points_earned": int(cust.get('total_points_earned', 0)),
-                "total_points_redeemed": int(cust.get('total_points_redeemed', 0)),
-                "total_visits": int(cust.get('total_visits', 0)),
-                "registered_at": _iso(cust.get('registered_at')) if cust.get('registered_at') else None,
-                "last_visit": _iso(cust.get('last_visit')) if cust.get('last_visit') else None,
-                "last_redeemed_at": _iso(cust.get('last_redeemed_at')) if cust.get('last_redeemed_at') else None,
-            }
-        }
-
-        if force_recalc:
-            total_remaining = 0
-            pe_q = db.collection('point_events')\
-                     .where('customer_phone', '==', phone_clean)\
-                     .where('restaurant_id', '==', restaurant_id)\
-                     .where('status', 'in', ['active','partial'])\
-                     .stream()
-
-            for pe in pe_q:
-                pe_data = pe.to_dict()
-                total_remaining += int(pe_data.get('remaining', pe_data.get('points', 0) or 0))
-
-            result['customer']['recomputed_points_balance'] = total_remaining
-            result['customer']['balance_match'] = (int(result['customer']['points_balance']) == total_remaining)
-
-        return jsonify(result), 200
-
-    except Exception as e:
-        print("ERROR check_balance:", e)
-        import traceback
-        traceback.print_exc()
-        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route('/redeem', methods=['POST'])
@@ -1034,36 +966,7 @@ def receive_message():
                 text_upper = text_clean.upper()
 
                 # ========================================
-                # PRIORITY 1: Balance Check (BAL001 format)
-                # ========================================
-                if text_upper.startswith("BAL") and len(text_upper) == 6 and text_upper[3:].isdigit():
-                    rest_id = "rest_" + text_upper[3:]
-                    print(f"💰 Balance check for {from_number}, Restaurant: {rest_id}")
-
-                    customer = get_customer(from_number, rest_id)
-
-                    if customer:
-                        registered = customer.get('registered_at')
-                        member_since = registered.strftime('%d %b %Y') if registered else 'N/A'
-
-                        message_text = f"""💰 Feastly Balance
-
-Account Details:
-━━━━━━━━━━━━━━━━━━━━
-💎 Available Points: {customer.get('points_balance', 0)} points
-📈 Total Earned: {customer.get('total_points_earned', 0)} points
-🏆 Total Visits: {customer.get('total_visits', 0)}
-📅 Member Since: {member_since}
-
-Visit us again to earn more! 🎉"""
-                    else:
-                        message_text = """You don't have an account yet! 😊
-
-Visit our restaurant and provide your phone number at checkout to start earning points! 🎁"""
-
-                    send_text(from_number, message_text, rest_id)
-                    return jsonify({"status": "ok"}), 200
-
+                
                 # ========================================
                 # PRIORITY 2: Onboarding Flow
                 # ========================================
@@ -1116,28 +1019,43 @@ Stay tuned! 📲"""
                 # ========================================
                 elif customer and customer.get('awaiting_name') != True:
                     print(f"✅ CASE 2: Existing registered customer")
-                    
+
                     # Check if they sent the signup code
                     print(f"🔐 Checking if message is signup code...")
                     is_valid_code, _ = validate_signup_code(text_clean, RESTAURANT_ID)
-                    
-                    customer_name = customer.get('customer_name', 'there')
-                    
-                    if is_valid_code:
-                        print(f"ℹ️ Customer sent valid signup code")
-                        message_text = f"""Hey {customer_name}! 👋
 
-You're already registered with us! ✅
+                    customer_name = customer.get('customer_name', 'there')
+
+                    if is_valid_code:
+                        # Check if customer already signed up with this code
+                        customer_signup_code = customer.get('signup_code', '').upper()
+                        entered_code = text_clean.upper()
+
+                        if customer_signup_code == entered_code:
+                            # Customer already used this code
+                            print(f"ℹ️ Customer already signed up with code: {entered_code}")
+                            message_text = f"""Hey {customer_name}! 👋
+
+You're already registered with us using this code! ✅
 
 Watch out for exclusive offers coming soon! 🎁"""
+                        else:
+                            # Customer entered a different valid code
+                            print(f"⚠️ Customer entered different code. Their code: {customer_signup_code}, Entered: {entered_code}")
+                            message_text = f"""Hey {customer_name}! 👋
+
+This is a different signup code. You're already registered with code {customer_signup_code}.
+
+One account per phone number! 😊"""
                     else:
+                        # Not a signup code - just a random message
                         print(f"ℹ️ Customer sent random message: '{text_clean}'")
                         message_text = f"""Hey {customer_name}! 👋
 
 Thanks for your message! 
 
 Need help? Contact our staff or visit us soon! 😊"""
-                    
+
                     print("📤 Sending response to existing customer")
                     send_text(from_number, message_text, RESTAURANT_ID)
                     print("✅ Message sent successfully!")
@@ -1161,8 +1079,8 @@ Need help? Contact our staff or visit us soon! 😊"""
                         if create_onboarding_customer(from_number, text_clean.upper(), RESTAURANT_ID):
                             message_text = """🎉 Welcome to our exclusive club!
 
-What's your name?
-(Just reply with your first name)"""
+You're all set! We'll send you exclusive offers and updates soon.
+Stay tuned! 📲"""
                             print("📤 Sending welcome message")
                             send_text(from_number, message_text, RESTAURANT_ID)
                             print("✅ Message sent successfully!")
