@@ -1003,7 +1003,7 @@ def send_template_campaign():
 
 @app.route('/webhook', methods=['POST'])
 def receive_message():
-    """Receive messages from Meta WhatsApp - DEBUG VERSION"""
+    """Receive messages from Meta WhatsApp - Onboarding + Balance Check"""
     data = request.get_json()
 
     print("=" * 60)
@@ -1012,34 +1012,31 @@ def receive_message():
 
     try:
         value = data['entry'][0]['changes'][0]['value']
-        print("✅ Step 1: Parsed entry/changes/value")
 
+        # Verify this is our phone number
         metadata = value.get('metadata', {})
         incoming_phone_id = metadata.get('phone_number_id')
-        print(f"✅ Step 2: Phone number ID: {incoming_phone_id}")
 
         if incoming_phone_id and incoming_phone_id != PHONE_NUMBER_ID:
             print(f"⚠️ Message for different phone_number_id: {incoming_phone_id}")
+            print(f"   Expected: {PHONE_NUMBER_ID}")
 
         if 'messages' in value:
-            print("✅ Step 3: Messages found in value")
             message = value['messages'][0]
             from_number = clean_phone_number(message['from'])
-            print(f"✅ Step 4: Cleaned phone number: {from_number}")
 
             if 'text' in message:
-                print("✅ Step 5: Text message detected")
                 text = message['text']['body']
                 print(f"📱 From: {from_number}")
                 print(f"💬 Message: {text}")
 
                 text_clean = text.strip()
                 text_upper = text_clean.upper()
-                print(f"✅ Step 6: Cleaned text: '{text_clean}'")
 
-                # === Balance Check First ===
+                # ========================================
+                # PRIORITY 1: Balance Check (BAL001 format)
+                # ========================================
                 if text_upper.startswith("BAL") and len(text_upper) == 6 and text_upper[3:].isdigit():
-                    print("✅ Step 7a: Balance check detected")
                     rest_id = "rest_" + text_upper[3:]
                     print(f"💰 Balance check for {from_number}, Restaurant: {rest_id}")
 
@@ -1064,124 +1061,129 @@ Visit us again to earn more! 🎉"""
 
 Visit our restaurant and provide your phone number at checkout to start earning points! 🎁"""
 
-                    print("✅ Step 8a: Sending balance message...")
                     send_text(from_number, message_text, rest_id)
-                    print("✅ Step 9a: Message sent!")
                     return jsonify({"status": "ok"}), 200
 
-                # === Onboarding Flow ===
-                print("✅ Step 7b: Not a balance check, checking onboarding...")
+                # ========================================
+                # PRIORITY 2: Onboarding Flow
+                # ========================================
                 
-                # Check if customer exists
-                print(f"🔍 Checking if customer exists...")
+                print(f"🔍 Checking customer for onboarding...")
                 customer = get_customer_by_phone_only(from_number, RESTAURANT_ID)
-                print(f"✅ Step 8b: Customer lookup complete. Found: {customer is not None}")
+                
+                if customer:
+                    print(f"✅ Customer exists")
+                    print(f"   awaiting_name: {customer.get('awaiting_name')}")
+                    print(f"   status: {customer.get('status', 'NOT SET')}")
+                    print(f"   customer_name: {customer.get('customer_name', 'NOT SET')}")
+                else:
+                    print(f"ℹ️ New customer - not in database")
 
-                # FLOW 1: Awaiting name
-                if customer and customer.get('awaiting_name'):
-                    print(f"✅ Step 9b-1: Customer awaiting name")
+                # ========================================
+                # CASE 1: Customer awaiting name
+                # ========================================
+                if customer and customer.get('awaiting_name') == True:
+                    print(f"👤 CASE 1: Customer awaiting name")
                     
                     name = text_clean.title()
-                    print(f"✅ Step 10b-1: Name to save: {name}")
                     
+                    # Validate name length
                     if len(name) < 2 or len(name) > 30:
                         print(f"⚠️ Invalid name length: {len(name)}")
                         send_text(from_number, "Please enter a valid name (2-30 characters).", RESTAURANT_ID)
                         return jsonify({"status": "ok"}), 200
                     
-                    print(f"💾 Saving customer name: {name}")
+                    # Save name
+                    print(f"💾 Saving name: {name}")
                     if save_customer_name(from_number, RESTAURANT_ID, name):
-                        print("✅ Name saved successfully")
                         message_text = f"""Perfect, {name}! ✅
 
 You're all set! 🎊
 
 We'll send you exclusive offers and updates soon.
 Stay tuned! 📲"""
-                        print("✅ Sending welcome message...")
+                        print("📤 Sending welcome message")
                         send_text(from_number, message_text, RESTAURANT_ID)
-                        print("✅ Message sent!")
+                        print("✅ Message sent successfully!")
                     else:
                         print("❌ Failed to save name")
                         send_text(from_number, "Sorry, something went wrong. Please try again.", RESTAURANT_ID)
                     
                     return jsonify({"status": "ok"}), 200
 
-                # FLOW 2: Existing customer
-                if customer and customer.get('status') == 'active' and not customer.get('awaiting_name'):
-                    print(f"✅ Step 9b-2: Existing customer detected")
-                    print(f"   Customer name: {customer.get('customer_name', 'Unknown')}")
-                    print(f"   Status: {customer.get('status')}")
-                    print(f"   Awaiting name: {customer.get('awaiting_name')}")
+                # ========================================
+                # CASE 2: Existing customer (already registered)
+                # ========================================
+                elif customer and customer.get('awaiting_name') != True:
+                    print(f"✅ CASE 2: Existing registered customer")
                     
-                    # Validate code
-                    print(f"🔐 Validating if they sent the signup code...")
-                    is_valid_code, validation_msg = validate_signup_code(text_clean, RESTAURANT_ID)
-                    print(f"✅ Step 10b-2: Code validation result: {is_valid_code} - {validation_msg}")
+                    # Check if they sent the signup code
+                    print(f"🔐 Checking if message is signup code...")
+                    is_valid_code, _ = validate_signup_code(text_clean, RESTAURANT_ID)
                     
                     customer_name = customer.get('customer_name', 'there')
                     
                     if is_valid_code:
-                        print(f"ℹ️ Existing customer sent valid code")
+                        print(f"ℹ️ Customer sent valid signup code")
                         message_text = f"""Hey {customer_name}! 👋
 
 You're already registered with us! ✅
 
 Watch out for exclusive offers coming soon! 🎁"""
                     else:
-                        print(f"ℹ️ Existing customer sent random message: '{text_clean}'")
+                        print(f"ℹ️ Customer sent random message: '{text_clean}'")
                         message_text = f"""Hey {customer_name}! 👋
 
 Thanks for your message! 
 
 Need help? Contact our staff or visit us soon! 😊"""
                     
-                    print("✅ Step 11b-2: Sending message to existing customer...")
-                    result = send_text(from_number, message_text, RESTAURANT_ID)
-                    print(f"✅ Step 12b-2: Message sent! Result: {result}")
+                    print("📤 Sending response to existing customer")
+                    send_text(from_number, message_text, RESTAURANT_ID)
+                    print("✅ Message sent successfully!")
                     return jsonify({"status": "ok"}), 200
 
-                # FLOW 3: New customer
-                if not customer:
-                    print(f"✅ Step 9b-3: New customer detected")
+                # ========================================
+                # CASE 3: New customer - validate signup code
+                # ========================================
+                else:  # customer is None (new customer)
+                    print(f"🆕 CASE 3: New customer attempting signup")
                     
-                    print(f"🔐 Validating signup code: '{text_clean}'")
-                    is_valid, message = validate_signup_code(text_clean, RESTAURANT_ID)
-                    print(f"✅ Step 10b-3: Validation result: {is_valid} - {message}")
+                    # Validate signup code
+                    print(f"🔐 Validating code: '{text_clean}'")
+                    is_valid, validation_message = validate_signup_code(text_clean, RESTAURANT_ID)
+                    print(f"   Validation result: {is_valid} - {validation_message}")
                     
                     if is_valid:
                         print(f"✅ Valid code! Creating customer...")
                         
+                        # Create customer
                         if create_onboarding_customer(from_number, text_clean.upper(), RESTAURANT_ID):
-                            print("✅ Step 11b-3: Customer created successfully")
                             message_text = """🎉 Welcome to our exclusive club!
 
 What's your name?
 (Just reply with your first name)"""
-                            print("✅ Step 12b-3: Sending welcome message...")
+                            print("📤 Sending welcome message")
                             send_text(from_number, message_text, RESTAURANT_ID)
-                            print("✅ Step 13b-3: Message sent!")
+                            print("✅ Message sent successfully!")
                         else:
                             print("❌ Failed to create customer")
                             send_text(from_number, "Sorry, registration failed. Please try again later.", RESTAURANT_ID)
                     else:
-                        print(f"❌ Invalid code: {text_clean}")
+                        print(f"❌ Invalid code entered")
                         message_text = """❌ Invalid code.
 
 Please ask the cashier for the correct signup code."""
-                        print("✅ Sending invalid code message...")
+                        print("📤 Sending invalid code message")
                         send_text(from_number, message_text, RESTAURANT_ID)
-                        print("✅ Message sent!")
+                        print("✅ Message sent successfully!")
                     
                     return jsonify({"status": "ok"}), 200
 
-                print("⚠️ Reached end of logic without handling - shouldn't happen")
-
         elif 'statuses' in value:
             status = value['statuses'][0]
-            print(f"📊 Status: {status.get('status')}")
+            print(f"📊 Status update: {status.get('status')}")
 
-        print("✅ Returning success response")
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
