@@ -281,6 +281,102 @@ def get_customer(phone_number, restaurant_id):
     print(f"❌ Customer not found: {customer_id}")
     return None
 
+# ============================================================
+# NEW FUNCTIONS - Add after get_customer()
+# ============================================================
+
+def get_customer_by_phone_only(phone_number, restaurant_id):
+    """Get customer by phone and restaurant"""
+    phone = clean_phone_number(phone_number)
+    customer_id = f"{phone}_{restaurant_id}"
+    customer_ref = db.collection('customers').document(customer_id)
+    customer = customer_ref.get()
+    
+    if customer.exists:
+        return customer.to_dict()
+    return None
+
+
+def get_restaurant_code(restaurant_id):
+    """Get active signup code for restaurant"""
+    if not db:
+        return None
+    
+    rest_doc = db.collection('restaurant_codes').document(restaurant_id).get()
+    
+    if rest_doc.exists:
+        return rest_doc.to_dict().get('active_code')
+    return None
+
+
+def validate_signup_code(code_entered, restaurant_id):
+    """Check if entered code matches restaurant's active code"""
+    active_code = get_restaurant_code(restaurant_id)
+    
+    if not active_code:
+        return False, "No active code set for this restaurant"
+    
+    if code_entered.upper().strip() != active_code.upper().strip():
+        return False, "Invalid code"
+    
+    return True, "Valid"
+
+
+def create_onboarding_customer(phone_number, code, restaurant_id):
+    """Create new customer during onboarding"""
+    if not db:
+        return False
+    
+    now = datetime.now(timezone.utc)
+    customer_id = f"{phone_number}_{restaurant_id}"
+    
+    try:
+        db.collection('customers').document(customer_id).set({
+            'phone_number': phone_number,
+            'customer_name': None,
+            'restaurant_id': restaurant_id,
+            'registered_at': now,
+            'last_visit': now,
+            'signup_code': code,
+            'status': 'active',
+            'awaiting_name': True,
+            'onboarding_source': 'QR_CODE'
+        })
+        
+        # Increment signup counter
+        db.collection('restaurant_codes').document(restaurant_id).update({
+            'total_signups': admin_firestore.Increment(1)
+        })
+        
+        print(f"✅ Created onboarding customer: {customer_id}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creating customer: {e}")
+        return False
+
+
+def save_customer_name(phone_number, restaurant_id, name):
+    """Save customer name after onboarding"""
+    if not db:
+        return False
+    
+    customer_id = f"{phone_number}_{restaurant_id}"
+    
+    try:
+        db.collection('customers').document(customer_id).update({
+            'customer_name': name,
+            'awaiting_name': False,
+            'name_captured_at': datetime.now(timezone.utc)
+        })
+        
+        print(f"✅ Saved name for {customer_id}: {name}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error saving name: {e}")
+        return False
+
 
 # ============================================================
 # Flask Routes - General
@@ -879,7 +975,7 @@ def send_template_campaign():
 
 @app.route('/webhook', methods=['POST'])
 def receive_message():
-    """Receive messages from Meta WhatsApp (Single WABA)"""
+    """Receive messages from Meta WhatsApp - ONBOARDING FLOW"""
     data = request.get_json()
 
     print("=" * 60)
@@ -897,8 +993,6 @@ def receive_message():
             print(f"⚠️ Message for different phone_number_id: {incoming_phone_id}")
             print(f"   Expected: {PHONE_NUMBER_ID}")
 
-        # No default restaurant id! Only explicit from code below.
-
         if 'messages' in value:
             message = value['messages'][0]
             from_number = clean_phone_number(message['from'])
@@ -908,47 +1002,77 @@ def receive_message():
                 print(f"📱 From: {from_number}")
                 print(f"💬 Message: {text}")
 
-                text_clean = text.strip().upper()
+                text_clean = text.strip()
 
-                # Accept ONLY 'BALxxx' pattern (e.g., BAL001, BAL009)
-                if text_clean.startswith("BAL") and len(text_clean) == 6 and text_clean[3:].isdigit():
-                    rest_id = "rest_" + text_clean[3:]
-                    print(f"💰 Balance check for {from_number}, Restaurant: {rest_id}")
+                # === CHECK IF CUSTOMER EXISTS ===
+                customer = get_customer_by_phone_only(from_number, RESTAURANT_ID)
 
-                    customer = get_customer(from_number, rest_id)
+                # === FLOW 1: Customer is awaiting name ===
+                if customer and customer.get('awaiting_name'):
+                    print(f"👤 Customer awaiting name")
+                    
+                    name = text_clean.title()
+                    
+                    # Basic validation
+                    if len(name) < 2 or len(name) > 30:
+                        send_text(from_number, "Please enter a valid name (2-30 characters).")
+                        return jsonify({"status": "ok"}), 200
+                    
+                    # Save name
+                    if save_customer_name(from_number, RESTAURANT_ID, name):
+                        message_text = f"""Perfect, {name}! ✅
 
-                    if customer:
-                        registered = customer.get('registered_at')
-                        member_since = registered.strftime('%d %b %Y') if registered else 'N/A'
+You're all set! 🎊
 
-                        message_text = f"""💰 Feastly Balance
-
-Account Details:
-━━━━━━━━━━━━━━━━━━━━
-💎 Available Points: {customer.get('points_balance', 0)} points
-📈 Total Earned: {customer.get('total_points_earned', 0)} points
-🏆 Total Visits: {customer.get('total_visits', 0)}
-📅 Member Since: {member_since}
-
-Visit us again to earn more! 🎉"""
+We'll send you exclusive offers and updates soon.
+Stay tuned! 📲"""
+                        send_text(from_number, message_text)
                     else:
-                        message_text = """You don't have an account yet! 😊
+                        send_text(from_number, "Sorry, something went wrong. Please try again.")
+                    
+                    return jsonify({"status": "ok"}), 200
 
-Visit our restaurant and provide your phone number at checkout to start earning points! 🎁"""
+                # === FLOW 2: Existing customer (already registered) ===
+                if customer and customer.get('status') == 'active' and not customer.get('awaiting_name'):
+                    print(f"✅ Existing customer: {customer.get('customer_name', 'Unknown')}")
+                    
+                    customer_name = customer.get('customer_name', 'there')
+                    message_text = f"""Hey {customer_name}! 👋
 
-                    send_text(from_number, message_text, rest_id)
-                else:
-                    print(f"❓ Unknown or invalid command: {text}")
+You're already registered with us! 
 
-                    message_text = """Welcome to Feastly! 👋
-
-How to earn points:
-Visit our restaurant and provide your phone number at checkout!
-
-Questions? Contact restaurant staff."""
-
-                    # Optionally, could send with a generic restaurant id or just not pass one.
+Watch out for exclusive offers coming soon! 🎁"""
+                    
                     send_text(from_number, message_text)
+                    return jsonify({"status": "ok"}), 200
+
+                # === FLOW 3: New customer - validate signup code ===
+                if not customer:
+                    print(f"🆕 New customer attempting signup")
+                    
+                    # Validate code
+                    is_valid, message = validate_signup_code(text_clean, RESTAURANT_ID)
+                    
+                    if is_valid:
+                        print(f"✅ Valid code: {text_clean}")
+                        
+                        # Create customer
+                        if create_onboarding_customer(from_number, text_clean.upper(), RESTAURANT_ID):
+                            message_text = """🎉 Welcome to our exclusive club!
+
+What's your name?
+(Just reply with your first name)"""
+                            send_text(from_number, message_text)
+                        else:
+                            send_text(from_number, "Sorry, registration failed. Please try again later.")
+                    else:
+                        print(f"❌ Invalid code: {text_clean}")
+                        message_text = """❌ Invalid code.
+
+Please ask the cashier for the correct signup code."""
+                        send_text(from_number, message_text)
+                    
+                    return jsonify({"status": "ok"}), 200
 
         elif 'statuses' in value:
             status = value['statuses'][0]
@@ -963,6 +1087,149 @@ Questions? Contact restaurant staff."""
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+
+# ============================================================
+# Flask Routes - Onboarding Admin API
+# ============================================================
+
+@app.route('/admin/set-code', methods=['POST'])
+def set_restaurant_code():
+    """
+    Set or update signup code for restaurant
+    Body: {
+        "code": "ABC123",
+        "restaurant_id": "rest_001" (optional)
+    }
+    """
+    print("\n" + "="*60)
+    print("🔑 SET CODE REQUEST")
+    print("="*60)
+    
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+        
+        new_code = data.get('code', '').upper().strip()
+        restaurant_id = data.get('restaurant_id', RESTAURANT_ID)
+        
+        if not new_code:
+            return jsonify({"error": "Code is required"}), 400
+        
+        if len(new_code) < 4:
+            return jsonify({"error": "Code must be at least 4 characters"}), 400
+        
+        print(f"📝 Setting code: {new_code} for restaurant: {restaurant_id}")
+        
+        # Set or update code
+        db.collection('restaurant_codes').document(restaurant_id).set({
+            'active_code': new_code,
+            'updated_at': datetime.now(timezone.utc),
+            'restaurant_id': restaurant_id,
+            'total_signups': 0
+        }, merge=True)
+        
+        print(f"✅ Code updated successfully")
+        print("="*60 + "\n")
+        
+        return jsonify({
+            "status": "ok",
+            "message": f"Code updated to {new_code}",
+            "code": new_code,
+            "restaurant_id": restaurant_id
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/admin/get-code', methods=['GET'])
+def get_current_code():
+    """
+    Get current signup code
+    Query params: restaurant_id (optional)
+    """
+    try:
+        restaurant_id = request.args.get('restaurant_id', RESTAURANT_ID)
+        
+        rest_doc = db.collection('restaurant_codes').document(restaurant_id).get()
+        
+        if rest_doc.exists:
+            data = rest_doc.to_dict()
+            return jsonify({
+                'status': 'ok',
+                'code': data.get('active_code'),
+                'total_signups': data.get('total_signups', 0),
+                'updated_at': data.get('updated_at').isoformat() if data.get('updated_at') else None
+            }), 200
+        else:
+            return jsonify({
+                'status': 'ok',
+                'code': None,
+                'message': 'No code set for this restaurant'
+            }), 200
+            
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/admin/onboarding-stats', methods=['GET'])
+def get_onboarding_stats():
+    """
+    Get onboarding statistics
+    Query params: restaurant_id (optional)
+    """
+    try:
+        restaurant_id = request.args.get('restaurant_id', RESTAURANT_ID)
+        
+        # Get total customers
+        customers = db.collection('customers')\
+            .where('restaurant_id', '==', restaurant_id)\
+            .where('onboarding_source', '==', 'QR_CODE')\
+            .stream()
+        
+        total_customers = 0
+        customers_with_name = 0
+        customers_without_name = 0
+        
+        for customer in customers:
+            total_customers += 1
+            cust_data = customer.to_dict()
+            if cust_data.get('customer_name'):
+                customers_with_name += 1
+            else:
+                customers_without_name += 1
+        
+        # Get code info
+        code_doc = db.collection('restaurant_codes').document(restaurant_id).get()
+        current_code = None
+        total_signups = 0
+        
+        if code_doc.exists:
+            code_data = code_doc.to_dict()
+            current_code = code_data.get('active_code')
+            total_signups = code_data.get('total_signups', 0)
+        
+        return jsonify({
+            'status': 'ok',
+            'current_code': current_code,
+            'total_customers': total_customers,
+            'customers_with_name': customers_with_name,
+            'customers_without_name': customers_without_name,
+            'completion_rate': round((customers_with_name / total_customers * 100), 2) if total_customers > 0 else 0,
+            'total_signups_tracked': total_signups
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 # ============================================================
 # Flask Routes - Expiry Job
