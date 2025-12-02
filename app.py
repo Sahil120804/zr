@@ -9,6 +9,7 @@ import os
 import base64
 import json
 import time
+import random
 
 
 app = Flask(__name__)
@@ -340,12 +341,12 @@ def validate_signup_code(code_entered, restaurant_id):
 
 
 def create_onboarding_customer(phone_number, code, restaurant_id):
-    """Create new customer with optional signup reward"""
+    """Create new customer with random reward chance"""
     if not db:
         print("❌ Database not connected")
         return False, None
     
-    # Check for reward
+    # Check for reward with random probability
     reward_data = get_signup_reward(code, restaurant_id)
     
     now = datetime.now(timezone.utc)
@@ -369,27 +370,30 @@ def create_onboarding_customer(phone_number, code, restaurant_id):
             'total_visits': 0
         }
         
-        # Add reward info if available
+        # Add reward info if customer won
         if reward_data:
             customer_doc['signup_reward'] = {
                 'code': code,
                 'description': reward_data['reward_description'],
                 'claimed_at': now,
-                'redeemed': False
+                'redeemed': False,
+                'won_randomly': True  # Mark as random win
             }
+            
+            # Track as winner
+            increment_reward_usage(code, restaurant_id)
+        else:
+            # Track as attempt (no win)
+            track_reward_attempt(code, restaurant_id)
         
         db.collection('customers').document(customer_id).set(customer_doc)
-        
-        # Increment reward usage
-        if reward_data:
-            increment_reward_usage(code, restaurant_id)
         
         # Increment total signups
         db.collection('restaurant_codes').document(restaurant_id).update({
             'total_signups': admin_firestore.Increment(1)
         })
         
-        print(f"✅ Customer created: {customer_id} | Reward: {reward_data is not None}")
+        print(f"✅ Customer created: {customer_id} | Won Reward: {reward_data is not None}")
         return True, reward_data
         
     except Exception as e:
@@ -397,6 +401,7 @@ def create_onboarding_customer(phone_number, code, restaurant_id):
         import traceback
         traceback.print_exc()
         return False, None
+
 
 
 def save_customer_name(phone_number, restaurant_id, name):
@@ -424,7 +429,7 @@ def save_customer_name(phone_number, restaurant_id, name):
         traceback.print_exc()
         return False
 def get_signup_reward(code, restaurant_id):
-    """Get reward for signup code if available"""
+    """Get reward for signup code with random probability check"""
     if not db:
         return None
     
@@ -444,17 +449,20 @@ def get_signup_reward(code, restaurant_id):
             print(f"⚠️ Reward is not active: {code}")
             return None
         
-        # Check if uses remaining
-        current_uses = reward_data.get('current_uses', 0)
-        max_uses = reward_data.get('max_uses', 0)
+        # ✨ NEW: Random probability check
+        win_probability = reward_data.get('win_probability', 0.5)  # Default 50%
+        random_number = random.random()  # Generates 0.0 to 1.0
         
-        if current_uses >= max_uses:
-            print(f"⚠️ Reward exhausted: {current_uses}/{max_uses}")
-            reward_ref.update({'status': 'exhausted'})
+        print(f"🎲 Random check: {random_number:.2f} vs {win_probability:.2f}")
+        
+        if random_number < win_probability:
+            # WINNER! 🎉
+            print(f"✅ WINNER! Customer gets reward: {code}")
+            return reward_data
+        else:
+            # No luck this time
+            print(f"❌ No luck. Customer doesn't get reward: {code}")
             return None
-        
-        print(f"✅ Reward available: {code} ({current_uses}/{max_uses} used)")
-        return reward_data
         
     except Exception as e:
         print(f"❌ Error getting reward: {e}")
@@ -462,7 +470,7 @@ def get_signup_reward(code, restaurant_id):
 
 
 def increment_reward_usage(code, restaurant_id):
-    """Increment usage counter for reward code"""
+    """Track reward winners and total attempts"""
     if not db:
         return False
     
@@ -470,29 +478,41 @@ def increment_reward_usage(code, restaurant_id):
         reward_id = f"{code.upper()}_{restaurant_id}"
         reward_ref = db.collection('signup_rewards').document(reward_id)
         
+        # Increment winner count and total attempts
         reward_ref.update({
-            'current_uses': admin_firestore.Increment(1),
-            'last_used_at': datetime.now(timezone.utc)
+            'total_winners': admin_firestore.Increment(1),
+            'total_attempts': admin_firestore.Increment(1),
+            'last_won_at': datetime.now(timezone.utc)
         })
         
-        print(f"✅ Incremented reward usage: {code}")
+        print(f"✅ Reward stats updated for: {code}")
+        return True
         
-        # Check if now exhausted
-        reward_snap = reward_ref.get()
-        if reward_snap.exists:
-            data = reward_snap.to_dict()
-            current = data.get('current_uses', 0)
-            max_uses = data.get('max_uses', 0)
-            
-            if current >= max_uses:
-                reward_ref.update({'status': 'exhausted'})
-                print(f"🎯 Reward {code} is now EXHAUSTED ({current}/{max_uses})")
+    except Exception as e:
+        print(f"❌ Error updating reward stats: {e}")
+        return False
+
+
+def track_reward_attempt(code, restaurant_id):
+    """Track when someone attempts but doesn't win"""
+    if not db:
+        return False
+    
+    try:
+        reward_id = f"{code.upper()}_{restaurant_id}"
+        reward_ref = db.collection('signup_rewards').document(reward_id)
+        
+        # Only increment attempts, not winners
+        reward_ref.update({
+            'total_attempts': admin_firestore.Increment(1)
+        })
         
         return True
         
     except Exception as e:
-        print(f"❌ Error incrementing reward: {e}")
+        print(f"❌ Error tracking attempt: {e}")
         return False
+
 
 
 
@@ -1022,7 +1042,6 @@ def send_template_campaign():
 # Flask Routes - WhatsApp Webhook
 # ============================================================
 
-
 @app.route('/webhook', methods=['POST'])
 def receive_message():
     """Receive messages from Meta WhatsApp - Onboarding + Balance Check"""
@@ -1055,8 +1074,6 @@ def receive_message():
                 text_clean = text.strip()
                 text_upper = text_clean.upper()
 
-                # ========================================
-                
                 # ========================================
                 # PRIORITY 2: Onboarding Flow
                 # ========================================
@@ -1161,12 +1178,31 @@ Need help? Contact our staff or visit us! 😊"""
                     if is_valid:
                         print(f"✅ Valid code! Creating customer...")
                         
-                        # Create customer
-                        if create_onboarding_customer(from_number, text_clean.upper(), RESTAURANT_ID):
-                            message_text = """🎉 Welcome to our exclusive club!
+                        # Create customer and check for reward
+                        success, reward_data = create_onboarding_customer(
+                            from_number, 
+                            text_clean.upper(), 
+                            RESTAURANT_ID
+                        )
+                        
+                        if success:
+                            if reward_data:
+                                # Customer got a reward!
+                                reward_desc = reward_data['reward_description']
+                                message_text = f"""🎉 Welcome! You're registered!
+
+🎁 SPECIAL REWARD: {reward_desc}
+
+Show this message to the cashier to claim your reward!
+
+We'll also send you exclusive offers. Stay tuned! 📲"""
+                            else:
+                                # No reward (exhausted or not configured)
+                                message_text = """🎉 Welcome to our exclusive club!
 
 You're all set! We'll send you exclusive offers and updates soon.
 Stay tuned! 📲"""
+                            
                             print("📤 Sending welcome message")
                             send_text(from_number, message_text, RESTAURANT_ID)
                             print("✅ Message sent successfully!")
@@ -1187,14 +1223,17 @@ Please ask the cashier for the correct signup code."""
         elif 'statuses' in value:
             status = value['statuses'][0]
             print(f"📊 Status update: {status.get('status')}")
-
-        return jsonify({"status": "ok"}), 200
+            return jsonify({"status": "ok"}), 200
 
     except Exception as e:
         print(f"❌ ERROR in webhook: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+    return jsonify({"status": "ok"}), 200
+
+
 
 
 # ============================================================
