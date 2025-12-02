@@ -357,20 +357,20 @@ def track_reward_attempt(code, restaurant_id):
 
 
 def create_onboarding_customer(phone_number, code, restaurant_id):
-    """Create new customer with random reward chance"""
+    """Create new customer (no reward stored in customer doc)"""
     if not db:
         print("❌ Database not connected")
         return False, None
-
+    
     # Check for reward with random probability
     reward_data = get_signup_reward(code, restaurant_id)
-
+    
     now = datetime.now(timezone.utc)
     phone_clean = clean_phone_number(phone_number)
     customer_id = f"{phone_clean}_{restaurant_id}"
-
+    
     try:
-        # Create customer document
+        # Create customer document (SAME for everyone)
         customer_doc = {
             'phone_number': phone_clean,
             'restaurant_id': restaurant_id,
@@ -379,37 +379,24 @@ def create_onboarding_customer(phone_number, code, restaurant_id):
             'status': 'active',
             'onboarding_source': 'QR_CODE'
         }
-
-        # Add reward info if customer won
+        
+        # Track stats only
         if reward_data:
-            customer_doc['signup_reward'] = {
-                'code': code,
-                'description': reward_data['reward_description'],
-                'claimed_at': now,
-                'redeemed': False,
-                'won_randomly': True
-            }
-
-            # Track as winner
             increment_reward_usage(code, restaurant_id)
         else:
-            # Track as attempt (no win)
             track_reward_attempt(code, restaurant_id)
-
+        
         db.collection('customers').document(customer_id).set(customer_doc)
-
-        # Increment total signups
+        
         db.collection('restaurant_codes').document(restaurant_id).update({
             'total_signups': admin_firestore.Increment(1)
         })
-
-        print(f"✅ Customer created: {customer_id} | Won Reward: {reward_data is not None}")
+        
+        print(f"✅ Customer created: {customer_id} | Won: {reward_data is not None}")
         return True, reward_data
-
+        
     except Exception as e:
-        print(f"❌ Error creating customer: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Error: {e}")
         return False, None
 
 
