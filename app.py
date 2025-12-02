@@ -1121,35 +1121,70 @@ Stay tuned! 📲"""
                     
                     return jsonify({"status": "ok"}), 200
 
-                # ========================================
+                                # ========================================
                 # CASE 2: Existing customer (already registered)
                 # ========================================
                 elif customer and customer.get('awaiting_name') != True:
                     print(f"✅ CASE 2: Existing registered customer")
 
-                    # Check if they sent the signup code
+                    # Check if they sent a signup code
                     print(f"🔐 Checking if message is signup code...")
                     is_valid_code, _ = validate_signup_code(text_clean, RESTAURANT_ID)
 
                     if is_valid_code:
-                        # Check if customer already signed up with this code
+                        # Check if customer already signed up with THIS EXACT CODE
                         customer_signup_code = customer.get('signup_code', '').upper()
                         entered_code = text_clean.upper()
 
                         if customer_signup_code == entered_code:
-                            # Customer already used this code
-                            print(f"ℹ️ Customer already signed up with code: {entered_code}")
-                            message_text = """You're already registered with us! ✅
+                            # Customer trying to use the SAME code again
+                            print(f"⚠️ Customer already used this exact code: {entered_code}")
+                            message_text = """You've already used this code! ✅
 
-You used this code to sign up. Watch out for exclusive offers coming soon! 🎁"""
+You're registered. Watch out for exclusive offers coming soon! 🎁"""
+                            
+                            print("📤 Sending 'already used' message")
+                            send_text(from_number, message_text, RESTAURANT_ID)
+                            print("✅ Message sent successfully!")
+                            return jsonify({"status": "ok"}), 200
                         else:
-                            # Customer entered a different valid code
-                            print(f"⚠️ Customer entered different code. Their code: {customer_signup_code}, Entered: {entered_code}")
-                            message_text = f"""You're already registered! ✅
+                            # Customer entered a DIFFERENT valid code - treat as new signup!
+                            print(f"🆕 Customer entered NEW code. Old: {customer_signup_code}, New: {entered_code}")
+                            print(f"   → Treating as new signup with new code")
+                            
+                            # Create customer and check for reward with NEW code
+                            success, reward_data = create_onboarding_customer(
+                                from_number, 
+                                text_clean.upper(), 
+                                RESTAURANT_ID
+                            )
+                            
+                            if success:
+                                if reward_data:
+                                    # Customer got a reward with new code!
+                                    reward_desc = reward_data['reward_description']
+                                    message_text = f"""🎉 New code registered!
 
-You signed up with code {customer_signup_code}. This is a different code.
+🎁 SPECIAL REWARD: {reward_desc}
 
-One account per phone number! 😊"""
+Show this message to the cashier to claim your reward!
+
+We'll keep sending you exclusive offers. Stay tuned! 📲"""
+                                else:
+                                    # No reward with new code
+                                    message_text = """🎉 New code registered!
+
+You're all set! We'll keep sending you exclusive offers and updates.
+Stay tuned! 📲"""
+                                
+                                print("📤 Sending new code welcome message")
+                                send_text(from_number, message_text, RESTAURANT_ID)
+                                print("✅ Message sent successfully!")
+                            else:
+                                print("❌ Failed to update customer with new code")
+                                send_text(from_number, "Sorry, registration failed. Please try again later.", RESTAURANT_ID)
+                            
+                            return jsonify({"status": "ok"}), 200
                     else:
                         # Not a signup code - just a random message
                         print(f"ℹ️ Customer sent random message: '{text_clean}'")
@@ -1159,10 +1194,11 @@ We'll keep you updated with exclusive offers soon! 🎁
 
 Need help? Contact our staff or visit us! 😊"""
 
-                    print("📤 Sending response to existing customer")
-                    send_text(from_number, message_text, RESTAURANT_ID)
-                    print("✅ Message sent successfully!")
-                    return jsonify({"status": "ok"}), 200
+                        print("📤 Sending response to existing customer")
+                        send_text(from_number, message_text, RESTAURANT_ID)
+                        print("✅ Message sent successfully!")
+                        return jsonify({"status": "ok"}), 200
+
 
                 # ========================================
                 # CASE 3: New customer - validate signup code
