@@ -241,7 +241,7 @@ def get_restaurant_code(restaurant_id):
         return None
 
     try:
-        rest_doc = db.collection('restaurant_codes').document(restaurant_id).get()
+        rest_doc = db.collection('restaurants').document(restaurant_id).get()
 
         if rest_doc.exists:
             code = rest_doc.to_dict().get('signup_code')
@@ -388,7 +388,7 @@ def create_onboarding_customer(phone_number, code, restaurant_id):
         
         db.collection('customers').document(customer_id).set(customer_doc)
         
-        db.collection('restaurant_codes').document(restaurant_id).update({
+        db.collection('restaurants').document(restaurant_id).update({
             'total_signups': admin_firestore.Increment(1)
         })
         
