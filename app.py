@@ -1024,8 +1024,6 @@ Stay tuned! 📲"""
                     print(f"🔐 Checking if message is signup code...")
                     is_valid_code, _ = validate_signup_code(text_clean, RESTAURANT_ID)
 
-                    customer_name = customer.get('customer_name', 'there')
-
                     if is_valid_code:
                         # Check if customer already signed up with this code
                         customer_signup_code = customer.get('signup_code', '').upper()
@@ -1034,27 +1032,25 @@ Stay tuned! 📲"""
                         if customer_signup_code == entered_code:
                             # Customer already used this code
                             print(f"ℹ️ Customer already signed up with code: {entered_code}")
-                            message_text = f"""Hey {customer_name}! 👋
+                            message_text = """You're already registered with us! ✅
 
-You're already registered with us using this code! ✅
-
-Watch out for exclusive offers coming soon! 🎁"""
+You used this code to sign up. Watch out for exclusive offers coming soon! 🎁"""
                         else:
                             # Customer entered a different valid code
                             print(f"⚠️ Customer entered different code. Their code: {customer_signup_code}, Entered: {entered_code}")
-                            message_text = f"""Hey {customer_name}! 👋
+                            message_text = f"""You're already registered! ✅
 
-This is a different signup code. You're already registered with code {customer_signup_code}.
+You signed up with code {customer_signup_code}. This is a different code.
 
 One account per phone number! 😊"""
                     else:
                         # Not a signup code - just a random message
                         print(f"ℹ️ Customer sent random message: '{text_clean}'")
-                        message_text = f"""Hey {customer_name}! 👋
+                        message_text = """Thanks for your message! 👋
 
-Thanks for your message! 
+We'll keep you updated with exclusive offers soon! 🎁
 
-Need help? Contact our staff or visit us soon! 😊"""
+Need help? Contact our staff or visit us! 😊"""
 
                     print("📤 Sending response to existing customer")
                     send_text(from_number, message_text, RESTAURANT_ID)
