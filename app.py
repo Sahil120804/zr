@@ -340,17 +340,21 @@ def validate_signup_code(code_entered, restaurant_id):
 
 
 def create_onboarding_customer(phone_number, code, restaurant_id):
-    """Create new customer during onboarding"""
+    """Create new customer with optional signup reward"""
     if not db:
         print("❌ Database not connected")
-        return False
+        return False, None
+    
+    # Check for reward
+    reward_data = get_signup_reward(code, restaurant_id)
     
     now = datetime.now(timezone.utc)
     phone_clean = clean_phone_number(phone_number)
     customer_id = f"{phone_clean}_{restaurant_id}"
     
     try:
-        db.collection('customers').document(customer_id).set({
+        # Create customer document
+        customer_doc = {
             'phone_number': phone_clean,
             'customer_name': None,
             'restaurant_id': restaurant_id,
@@ -358,26 +362,41 @@ def create_onboarding_customer(phone_number, code, restaurant_id):
             'last_visit': now,
             'signup_code': code,
             'status': 'active',
-            'awaiting_name': False,  # Not collecting names
+            'awaiting_name': False,
             'onboarding_source': 'QR_CODE',
             'points_balance': 0,
             'total_points_earned': 0,
             'total_visits': 0
-        })
+        }
         
-        # Increment signup counter
+        # Add reward info if available
+        if reward_data:
+            customer_doc['signup_reward'] = {
+                'code': code,
+                'description': reward_data['reward_description'],
+                'claimed_at': now,
+                'redeemed': False
+            }
+        
+        db.collection('customers').document(customer_id).set(customer_doc)
+        
+        # Increment reward usage
+        if reward_data:
+            increment_reward_usage(code, restaurant_id)
+        
+        # Increment total signups
         db.collection('restaurant_codes').document(restaurant_id).update({
             'total_signups': admin_firestore.Increment(1)
         })
         
-        print(f"✅ Created onboarding customer: {customer_id}")
-        return True
+        print(f"✅ Customer created: {customer_id} | Reward: {reward_data is not None}")
+        return True, reward_data
         
     except Exception as e:
         print(f"❌ Error creating customer: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        return False, None
 
 
 def save_customer_name(phone_number, restaurant_id, name):
@@ -404,6 +423,77 @@ def save_customer_name(phone_number, restaurant_id, name):
         import traceback
         traceback.print_exc()
         return False
+def get_signup_reward(code, restaurant_id):
+    """Get reward for signup code if available"""
+    if not db:
+        return None
+    
+    try:
+        reward_id = f"{code.upper()}_{restaurant_id}"
+        reward_ref = db.collection('signup_rewards').document(reward_id)
+        reward_snap = reward_ref.get()
+        
+        if not reward_snap.exists:
+            print(f"⚠️ No reward configured for code: {code}")
+            return None
+        
+        reward_data = reward_snap.to_dict()
+        
+        # Check if active
+        if reward_data.get('status') != 'active':
+            print(f"⚠️ Reward is not active: {code}")
+            return None
+        
+        # Check if uses remaining
+        current_uses = reward_data.get('current_uses', 0)
+        max_uses = reward_data.get('max_uses', 0)
+        
+        if current_uses >= max_uses:
+            print(f"⚠️ Reward exhausted: {current_uses}/{max_uses}")
+            reward_ref.update({'status': 'exhausted'})
+            return None
+        
+        print(f"✅ Reward available: {code} ({current_uses}/{max_uses} used)")
+        return reward_data
+        
+    except Exception as e:
+        print(f"❌ Error getting reward: {e}")
+        return None
+
+
+def increment_reward_usage(code, restaurant_id):
+    """Increment usage counter for reward code"""
+    if not db:
+        return False
+    
+    try:
+        reward_id = f"{code.upper()}_{restaurant_id}"
+        reward_ref = db.collection('signup_rewards').document(reward_id)
+        
+        reward_ref.update({
+            'current_uses': admin_firestore.Increment(1),
+            'last_used_at': datetime.now(timezone.utc)
+        })
+        
+        print(f"✅ Incremented reward usage: {code}")
+        
+        # Check if now exhausted
+        reward_snap = reward_ref.get()
+        if reward_snap.exists:
+            data = reward_snap.to_dict()
+            current = data.get('current_uses', 0)
+            max_uses = data.get('max_uses', 0)
+            
+            if current >= max_uses:
+                reward_ref.update({'status': 'exhausted'})
+                print(f"🎯 Reward {code} is now EXHAUSTED ({current}/{max_uses})")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error incrementing reward: {e}")
+        return False
+
 
 
 # ============================================================
